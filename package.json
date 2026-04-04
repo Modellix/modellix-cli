@@ -1,6 +1,6 @@
 {
   "name": "modellix-cli",
-  "description": "A CLI tool that use Modellix model services.",
+  "description": "Official CLI for Modellix model services.",
   "version": "0.0.2",
   "author": "Alen Hu",
   "bin": {
@@ -38,7 +38,18 @@
   ],
   "homepage": "https://github.com/Modellix/modellix-cli",
   "keywords": [
-    "oclif"
+    "modellix",
+    "ai",
+    "model-as-a-service",
+    "cli",
+    "command-line-interface",
+    "text-to-image",
+    "image-to-image",
+    "image-generation",
+    "text-to-video",
+    "image-to-video",
+    "video-to-video",
+    "video-generation"
   ],
   "license": "MIT",
   "main": "dist/index.js",
