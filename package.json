@@ -1,7 +1,7 @@
 {
   "name": "modellix-cli",
   "description": "A CLI tool that use Modellix model services.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "author": "Alen Hu",
   "bin": {
     "modellix-cli": "./bin/run.js"
