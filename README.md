@@ -130,4 +130,5 @@ modellix-cli <command> --help
 ## Related Links
 
 - [Modellix Website](https://modellix.ai)
-- [Modellix Docs](https://docs.modellix.ai/get-started)
+- [Modellix CLI Guide](https://docs.modellix.ai/ways-to-use/cli)
+- [Modellix Docs Overview](https://docs.modellix.ai/get-started)
