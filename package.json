@@ -2,7 +2,7 @@
   "name": "modellix-cli",
   "description": "Official CLI for Modellix model services.",
   "version": "0.0.3",
-  "author": "Alen Hu",
+  "author": "Modellix",
   "bin": {
     "modellix-cli": "bin/run.js"
   },

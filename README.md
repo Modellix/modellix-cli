@@ -48,6 +48,14 @@ JSON output:
 modellix-cli model types --json
 ```
 
+Current supported `--model-type` enum values:
+
+- `text-to-image`
+- `text-to-video`
+- `image-to-image`
+- `image-to-video`
+- `video-to-video`
+
 ### 2) Create a model task
 
 Use inline JSON body:
@@ -87,6 +95,23 @@ modellix-cli task get task-abc123
 1. Run `modellix-cli model types` to check supported model type values.
 2. Run `modellix-cli model invoke ...` and copy the returned `task_id`.
 3. Run `modellix-cli task get <task_id>` to get status and result.
+
+## Troubleshooting
+
+### 401 Unauthorized
+
+- Your API key is missing, invalid, or expired.
+- Verify `MODELLIX_API_KEY` or pass `--api-key` explicitly.
+
+### 402 Payment Required
+
+- Your account balance is insufficient.
+- Recharge your account in the Modellix console and retry.
+
+### 429 Too Many Requests
+
+- You have hit rate limit or concurrency limit.
+- Retry with exponential backoff (for example: 1s, 2s, 4s).
 
 ## Help
 
