@@ -74,4 +74,22 @@ describe('model invoke', () => {
 
     expect(error?.message).to.contain('Missing API key')
   })
+
+  it('fails when model-type is not in enum options', async () => {
+    const {error} = await runCommand([
+      'model',
+      'invoke',
+      '--model-type',
+      'text-to-audio',
+      '--model-id',
+      'qwen-image-plus',
+      '--api-key',
+      'test-key',
+      '--body',
+      '{"prompt":"cat"}',
+    ])
+
+    expect(error?.message).to.contain('Expected --model-type=')
+    expect(error?.message).to.contain('text-to-image')
+  })
 })

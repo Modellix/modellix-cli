@@ -79,6 +79,7 @@ USAGE
 <!-- commands -->
 * [`modellix-cli help [COMMAND]`](#modellix-cli-help-command)
 * [`modellix-cli model invoke`](#modellix-cli-model-invoke)
+* [`modellix-cli model types`](#modellix-cli-model-types)
 * [`modellix-cli task get TASKID`](#modellix-cli-task-get-taskid)
 
 ## `modellix-cli help [COMMAND]`
@@ -107,15 +108,17 @@ Create an async Modellix model task
 
 ```
 USAGE
-  $ modellix-cli model invoke --model-id <value> --model-type <value> [--api-key <value>] [--body <value> |
+  $ modellix-cli model invoke --model-id <value> --model-type
+    text-to-image|text-to-video|image-to-image|image-to-video|video-to-video [--api-key <value>] [--body <value> |
     --body-file <value>]
 
 FLAGS
-  --api-key=<value>     Modellix API key (falls back to MODELLIX_API_KEY)
-  --body=<value>        JSON string request body
-  --body-file=<value>   Path to a JSON file used as request body
-  --model-id=<value>    (required) Model ID, for example qwen-image-plus
-  --model-type=<value>  (required) Model type path segment, for example text-to-image
+  --api-key=<value>      Modellix API key (falls back to MODELLIX_API_KEY)
+  --body=<value>         JSON string request body
+  --body-file=<value>    Path to a JSON file used as request body
+  --model-id=<value>     (required) Model ID, for example qwen-image-plus
+  --model-type=<option>  (required) Model type path segment, for example text-to-image
+                         <options: text-to-image|text-to-video|image-to-image|image-to-video|video-to-video>
 
 DESCRIPTION
   Create an async Modellix model task
@@ -127,6 +130,28 @@ EXAMPLES
 ```
 
 _See code: [src/commands/model/invoke.ts](https://github.com/Desktop/modellix-cli/blob/v0.0.0/src/commands/model/invoke.ts)_
+
+## `modellix-cli model types`
+
+List supported values for --model-type
+
+```
+USAGE
+  $ modellix-cli model types [--json]
+
+FLAGS
+  --json  Output values as a JSON array
+
+DESCRIPTION
+  List supported values for --model-type
+
+EXAMPLES
+  $ modellix-cli model types
+
+  $ modellix-cli model types --json
+```
+
+_See code: [src/commands/model/types.ts](https://github.com/Desktop/modellix-cli/blob/v0.0.0/src/commands/model/types.ts)_
 
 ## `modellix-cli task get TASKID`
 

@@ -2,6 +2,7 @@ import {Command, Flags} from '@oclif/core'
 
 import {resolveApiKey} from '../../lib/auth.js'
 import {parseModelInvokeBody} from '../../lib/body.js'
+import {MODEL_TYPES} from '../../lib/model-types.js'
 import {invokeModelAsync} from '../../lib/modellix-client.js'
 
 export default class ModelInvoke extends Command {
@@ -28,6 +29,7 @@ export default class ModelInvoke extends Command {
     }),
     'model-type': Flags.string({
       description: 'Model type path segment, for example text-to-image',
+      options: [...MODEL_TYPES],
       required: true,
     }),
   }
