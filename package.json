@@ -52,7 +52,7 @@
     ],
     "topicSeparator": " "
   },
-  "repository": "Desktop/modellix-cli",
+  "repository": "Modellix/modellix-cli",
   "scripts": {
     "build": "shx rm -rf dist tsconfig.tsbuildinfo && tsc -b",
     "lint": "eslint",
