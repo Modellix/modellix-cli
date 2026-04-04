@@ -6,7 +6,7 @@
   "bin": {
     "modellix-cli": "./bin/run.js"
   },
-  "bugs": "https://github.com/Desktop/modellix-cli/issues",
+  "bugs": "https://github.com/Modellix/modellix-cli/issues",
   "dependencies": {
     "@oclif/core": "^4",
     "@oclif/plugin-help": "^6"
@@ -36,7 +36,7 @@
     "./dist",
     "./oclif.manifest.json"
   ],
-  "homepage": "https://github.com/Desktop/modellix-cli",
+  "homepage": "https://github.com/Modellix/modellix-cli",
   "keywords": [
     "oclif"
   ],
