@@ -4,7 +4,7 @@
   "version": "0.0.2",
   "author": "Alen Hu",
   "bin": {
-    "modellix-cli": "./bin/run.js"
+    "modellix-cli": "bin/run.js"
   },
   "bugs": "https://github.com/Modellix/modellix-cli/issues",
   "dependencies": {
@@ -52,7 +52,10 @@
     ],
     "topicSeparator": " "
   },
-  "repository": "Modellix/modellix-cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Modellix/modellix-cli.git"
+  },
   "scripts": {
     "build": "shx rm -rf dist tsconfig.tsbuildinfo && tsc -b",
     "lint": "eslint",
