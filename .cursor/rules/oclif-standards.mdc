@@ -1,0 +1,46 @@
+---
+description: Enforce oclif conventions for this CLI project
+alwaysApply: true
+---
+
+# oclif Development Standards
+
+Use oclif-native patterns for all CLI work in this repository.
+
+## Command Structure
+
+- Implement commands under `src/commands/**` and export a class extending `Command` from `@oclif/core`.
+- Define `static description`, `static examples`, `static flags`, and `static args` for every user-facing command.
+- Keep command behavior in `async run()` and avoid side effects at module top-level.
+
+## UX and Help
+
+- Write clear help text and examples that match the real command usage.
+- Prefer oclif parser/flags APIs instead of custom `process.argv` parsing.
+- Keep output deterministic and concise; use `this.log()` for normal output and `this.warn()` for non-fatal warnings.
+
+## Error Handling
+
+- Throw meaningful errors in command logic and let oclif render failures consistently.
+- Do not swallow exceptions silently.
+
+## Examples
+
+```ts
+// Good: oclif-native command shape
+export default class HelloWorld extends Command {
+  static description = 'Say hello world'
+  static examples = ['<%= config.bin %> hello world']
+  static flags = {}
+  static args = {}
+  async run(): Promise<void> {
+    this.log('hello world')
+  }
+}
+```
+
+```ts
+// Avoid: bypassing oclif parsing/help system
+const args = process.argv.slice(2)
+console.log(args.join(' '))
+```

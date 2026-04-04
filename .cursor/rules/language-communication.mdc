@@ -1,0 +1,25 @@
+---
+description: Use English for development artifacts and Chinese for developer communication
+alwaysApply: true
+---
+
+# Language Communication Standard
+
+Follow this language split consistently in this project:
+
+- Use **English** for source code, identifiers, comments, commit messages, CLI help text, docs, and tests.
+- Use **Chinese** when communicating with developers in chat, code review replies, and implementation explanations.
+
+## Do
+
+```text
+Code and docs: English
+Developer-facing conversation: Chinese
+```
+
+## Avoid
+
+```text
+Do not mix Chinese into code identifiers or technical docs unless explicitly requested.
+Do not reply to developers in English unless explicitly requested.
+```
