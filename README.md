@@ -1,7 +1,52 @@
-modellix-cli
-=================
+# modellix-cli
 
-A CLI tool that use Modellix model services.
+A CLI tool for [Modellix](https://modellix.ai), built with oclif.
+
+`modellix-cli` helps you create Modellix generation tasks from terminal and fetch task results quickly.
+
+It is designed for developers/agents who want a simple command-line workflow over the Modellix API.
+
+## What is Modellix
+
+[Modellix](https://modellix.ai) is a MaaS platform that provides one API for many AI models.
+
+You can learn more from the official docs overview: [Modellix Product Introduction](https://docs.modellix.ai/get-started).
+
+## What this CLI can do
+
+- Create async model tasks with `modellix-cli model invoke`
+- Query task status and generated output with `modellix-cli task get <task_id>`
+- Support API key via `--api-key` or environment variable `MODELLIX_API_KEY`
+
+## Quick Start
+
+```sh
+npm install -g modellix-cli
+```
+
+Set API key once:
+
+```sh
+# macOS / Linux
+export MODELLIX_API_KEY="your_api_key"
+```
+
+```powershell
+# Windows PowerShell
+$env:MODELLIX_API_KEY="your_api_key"
+```
+
+Create a task:
+
+```sh
+modellix-cli model invoke --model-type text-to-image --model-id qwen-image-plus --body '{"prompt":"A cute cat playing in a garden on a sunny day"}'
+```
+
+Query task result:
+
+```sh
+modellix-cli task get <task_id>
+```
 
 
 [![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
@@ -10,6 +55,9 @@ A CLI tool that use Modellix model services.
 
 
 <!-- toc -->
+* [modellix-cli](#modellix-cli)
+* [macOS / Linux](#macos--linux)
+* [Windows PowerShell](#windows-powershell)
 * [Usage](#usage)
 * [Commands](#commands)
 <!-- tocstop -->
@@ -29,63 +77,9 @@ USAGE
 <!-- usagestop -->
 # Commands
 <!-- commands -->
-* [`modellix-cli hello PERSON`](#modellix-cli-hello-person)
-* [`modellix-cli hello world`](#modellix-cli-hello-world)
 * [`modellix-cli help [COMMAND]`](#modellix-cli-help-command)
 * [`modellix-cli model invoke`](#modellix-cli-model-invoke)
-* [`modellix-cli plugins`](#modellix-cli-plugins)
-* [`modellix-cli plugins add PLUGIN`](#modellix-cli-plugins-add-plugin)
-* [`modellix-cli plugins:inspect PLUGIN...`](#modellix-cli-pluginsinspect-plugin)
-* [`modellix-cli plugins install PLUGIN`](#modellix-cli-plugins-install-plugin)
-* [`modellix-cli plugins link PATH`](#modellix-cli-plugins-link-path)
-* [`modellix-cli plugins remove [PLUGIN]`](#modellix-cli-plugins-remove-plugin)
-* [`modellix-cli plugins reset`](#modellix-cli-plugins-reset)
-* [`modellix-cli plugins uninstall [PLUGIN]`](#modellix-cli-plugins-uninstall-plugin)
-* [`modellix-cli plugins unlink [PLUGIN]`](#modellix-cli-plugins-unlink-plugin)
-* [`modellix-cli plugins update`](#modellix-cli-plugins-update)
 * [`modellix-cli task get TASKID`](#modellix-cli-task-get-taskid)
-
-## `modellix-cli hello PERSON`
-
-Say hello
-
-```
-USAGE
-  $ modellix-cli hello PERSON -f <value>
-
-ARGUMENTS
-  PERSON  Person to say hello to
-
-FLAGS
-  -f, --from=<value>  (required) Who is saying hello
-
-DESCRIPTION
-  Say hello
-
-EXAMPLES
-  $ modellix-cli hello friend --from oclif
-  hello friend from oclif! (./src/commands/hello/index.ts)
-```
-
-_See code: [src/commands/hello/index.ts](https://github.com/Desktop/modellix-cli/blob/v0.0.0/src/commands/hello/index.ts)_
-
-## `modellix-cli hello world`
-
-Say hello world
-
-```
-USAGE
-  $ modellix-cli hello world
-
-DESCRIPTION
-  Say hello world
-
-EXAMPLES
-  $ modellix-cli hello world
-  hello world! (./src/commands/hello/world.ts)
-```
-
-_See code: [src/commands/hello/world.ts](https://github.com/Desktop/modellix-cli/blob/v0.0.0/src/commands/hello/world.ts)_
 
 ## `modellix-cli help [COMMAND]`
 
@@ -133,296 +127,6 @@ EXAMPLES
 ```
 
 _See code: [src/commands/model/invoke.ts](https://github.com/Desktop/modellix-cli/blob/v0.0.0/src/commands/model/invoke.ts)_
-
-## `modellix-cli plugins`
-
-List installed plugins.
-
-```
-USAGE
-  $ modellix-cli plugins [--json] [--core]
-
-FLAGS
-  --core  Show core plugins.
-
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  List installed plugins.
-
-EXAMPLES
-  $ modellix-cli plugins
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.59/src/commands/plugins/index.ts)_
-
-## `modellix-cli plugins add PLUGIN`
-
-Installs a plugin into modellix-cli.
-
-```
-USAGE
-  $ modellix-cli plugins add PLUGIN... [--json] [-f] [-h] [-s | -v]
-
-ARGUMENTS
-  PLUGIN...  Plugin to install.
-
-FLAGS
-  -f, --force    Force npm to fetch remote resources even if a local copy exists on disk.
-  -h, --help     Show CLI help.
-  -s, --silent   Silences npm output.
-  -v, --verbose  Show verbose npm output.
-
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  Installs a plugin into modellix-cli.
-
-  Uses npm to install plugins.
-
-  Installation of a user-installed plugin will override a core plugin.
-
-  Use the MODELLIX_CLI_NPM_LOG_LEVEL environment variable to set the npm loglevel.
-  Use the MODELLIX_CLI_NPM_REGISTRY environment variable to set the npm registry.
-
-ALIASES
-  $ modellix-cli plugins add
-
-EXAMPLES
-  Install a plugin from npm registry.
-
-    $ modellix-cli plugins add myplugin
-
-  Install a plugin from a github url.
-
-    $ modellix-cli plugins add https://github.com/someuser/someplugin
-
-  Install a plugin from a github slug.
-
-    $ modellix-cli plugins add someuser/someplugin
-```
-
-## `modellix-cli plugins:inspect PLUGIN...`
-
-Displays installation properties of a plugin.
-
-```
-USAGE
-  $ modellix-cli plugins inspect PLUGIN...
-
-ARGUMENTS
-  PLUGIN...  [default: .] Plugin to inspect.
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  Displays installation properties of a plugin.
-
-EXAMPLES
-  $ modellix-cli plugins inspect myplugin
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.59/src/commands/plugins/inspect.ts)_
-
-## `modellix-cli plugins install PLUGIN`
-
-Installs a plugin into modellix-cli.
-
-```
-USAGE
-  $ modellix-cli plugins install PLUGIN... [--json] [-f] [-h] [-s | -v]
-
-ARGUMENTS
-  PLUGIN...  Plugin to install.
-
-FLAGS
-  -f, --force    Force npm to fetch remote resources even if a local copy exists on disk.
-  -h, --help     Show CLI help.
-  -s, --silent   Silences npm output.
-  -v, --verbose  Show verbose npm output.
-
-GLOBAL FLAGS
-  --json  Format output as json.
-
-DESCRIPTION
-  Installs a plugin into modellix-cli.
-
-  Uses npm to install plugins.
-
-  Installation of a user-installed plugin will override a core plugin.
-
-  Use the MODELLIX_CLI_NPM_LOG_LEVEL environment variable to set the npm loglevel.
-  Use the MODELLIX_CLI_NPM_REGISTRY environment variable to set the npm registry.
-
-ALIASES
-  $ modellix-cli plugins add
-
-EXAMPLES
-  Install a plugin from npm registry.
-
-    $ modellix-cli plugins install myplugin
-
-  Install a plugin from a github url.
-
-    $ modellix-cli plugins install https://github.com/someuser/someplugin
-
-  Install a plugin from a github slug.
-
-    $ modellix-cli plugins install someuser/someplugin
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.59/src/commands/plugins/install.ts)_
-
-## `modellix-cli plugins link PATH`
-
-Links a plugin into the CLI for development.
-
-```
-USAGE
-  $ modellix-cli plugins link PATH [-h] [--install] [-v]
-
-ARGUMENTS
-  PATH  [default: .] path to plugin
-
-FLAGS
-  -h, --help          Show CLI help.
-  -v, --verbose
-      --[no-]install  Install dependencies after linking the plugin.
-
-DESCRIPTION
-  Links a plugin into the CLI for development.
-
-  Installation of a linked plugin will override a user-installed or core plugin.
-
-  e.g. If you have a user-installed or core plugin that has a 'hello' command, installing a linked plugin with a 'hello'
-  command will override the user-installed or core plugin implementation. This is useful for development work.
-
-
-EXAMPLES
-  $ modellix-cli plugins link myplugin
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.59/src/commands/plugins/link.ts)_
-
-## `modellix-cli plugins remove [PLUGIN]`
-
-Removes a plugin from the CLI.
-
-```
-USAGE
-  $ modellix-cli plugins remove [PLUGIN...] [-h] [-v]
-
-ARGUMENTS
-  [PLUGIN...]  plugin to uninstall
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Removes a plugin from the CLI.
-
-ALIASES
-  $ modellix-cli plugins unlink
-  $ modellix-cli plugins remove
-
-EXAMPLES
-  $ modellix-cli plugins remove myplugin
-```
-
-## `modellix-cli plugins reset`
-
-Remove all user-installed and linked plugins.
-
-```
-USAGE
-  $ modellix-cli plugins reset [--hard] [--reinstall]
-
-FLAGS
-  --hard       Delete node_modules and package manager related files in addition to uninstalling plugins.
-  --reinstall  Reinstall all plugins after uninstalling.
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.59/src/commands/plugins/reset.ts)_
-
-## `modellix-cli plugins uninstall [PLUGIN]`
-
-Removes a plugin from the CLI.
-
-```
-USAGE
-  $ modellix-cli plugins uninstall [PLUGIN...] [-h] [-v]
-
-ARGUMENTS
-  [PLUGIN...]  plugin to uninstall
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Removes a plugin from the CLI.
-
-ALIASES
-  $ modellix-cli plugins unlink
-  $ modellix-cli plugins remove
-
-EXAMPLES
-  $ modellix-cli plugins uninstall myplugin
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.59/src/commands/plugins/uninstall.ts)_
-
-## `modellix-cli plugins unlink [PLUGIN]`
-
-Removes a plugin from the CLI.
-
-```
-USAGE
-  $ modellix-cli plugins unlink [PLUGIN...] [-h] [-v]
-
-ARGUMENTS
-  [PLUGIN...]  plugin to uninstall
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Removes a plugin from the CLI.
-
-ALIASES
-  $ modellix-cli plugins unlink
-  $ modellix-cli plugins remove
-
-EXAMPLES
-  $ modellix-cli plugins unlink myplugin
-```
-
-## `modellix-cli plugins update`
-
-Update installed plugins.
-
-```
-USAGE
-  $ modellix-cli plugins update [-h] [-v]
-
-FLAGS
-  -h, --help     Show CLI help.
-  -v, --verbose
-
-DESCRIPTION
-  Update installed plugins.
-```
-
-_See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/5.4.59/src/commands/plugins/update.ts)_
 
 ## `modellix-cli task get TASKID`
 
