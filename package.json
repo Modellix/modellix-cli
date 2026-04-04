@@ -1,7 +1,7 @@
 {
   "name": "modellix-cli",
   "description": "Official CLI for Modellix model services.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "author": "Modellix",
   "bin": {
     "modellix-cli": "bin/run.js"
