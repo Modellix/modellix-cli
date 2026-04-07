@@ -3,7 +3,6 @@ import type {IncomingHttpHeaders} from 'node:http'
 import {request} from 'node:https'
 
 const BASE_URL = 'https://api.modellix.ai'
-const PROVIDER = 'alibaba'
 
 export type JsonValue = boolean | JsonValue[] | null | number | string | {[key: string]: JsonValue}
 
@@ -30,7 +29,7 @@ type RequestOptions = {
 export type InvokeModelAsyncInput = {
   apiKey: string
   body: JsonValue
-  modelId: string
+  modelSlug: string
   modelType: string
 }
 
@@ -44,8 +43,8 @@ export function __setHttpRequesterForTest(
 
 export async function invokeModelAsync(input: InvokeModelAsyncInput): Promise<JsonValue> {
   const modelType = encodeURIComponent(input.modelType)
-  const modelId = encodeURIComponent(input.modelId)
-  const path = `/api/v1/${modelType}/${PROVIDER}/${modelId}/async`
+  const {modelId, provider} = parseModelSlug(input.modelSlug)
+  const path = `/api/v1/${modelType}/${encodeURIComponent(provider)}/${encodeURIComponent(modelId)}/async`
 
   return requestJson({
     apiKey: input.apiKey,
@@ -53,6 +52,26 @@ export async function invokeModelAsync(input: InvokeModelAsyncInput): Promise<Js
     method: 'POST',
     path,
   })
+}
+
+function parseModelSlug(modelSlug: string): {modelId: string; provider: string} {
+  const trimmed = modelSlug.trim()
+  const slashIndex = trimmed.indexOf('/')
+  if (slashIndex <= 0 || slashIndex === trimmed.length - 1) {
+    throw new Error(
+      'Invalid model slug. Use provider/model format, for example bytedance/seedream-4.5-t2i.',
+    )
+  }
+
+  const provider = trimmed.slice(0, slashIndex).trim()
+  const modelId = trimmed.slice(slashIndex + 1).trim()
+  if (!provider || !modelId) {
+    throw new Error(
+      'Invalid model slug. Use provider/model format, for example bytedance/seedream-4.5-t2i.',
+    )
+  }
+
+  return {modelId, provider}
 }
 
 export async function getTaskResult(input: {apiKey: string; taskId: string}): Promise<JsonValue> {

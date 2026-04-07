@@ -40,8 +40,8 @@ describe('model invoke', () => {
       'invoke',
       '--model-type',
       'text-to-image',
-      '--model-id',
-      'qwen-image-plus',
+      '--model-slug',
+      'bytedance/seedream-4.5-t2i',
       '--api-key',
       'test-key',
       '--body',
@@ -49,7 +49,7 @@ describe('model invoke', () => {
     ])
 
     expect(error).to.equal(undefined)
-    expect(receivedPath).to.equal('/api/v1/text-to-image/alibaba/qwen-image-plus/async')
+    expect(receivedPath).to.equal('/api/v1/text-to-image/bytedance/seedream-4.5-t2i/async')
     expect(receivedApiKey).to.equal('test-key')
     expect(receivedMethod).to.equal('POST')
     expect(receivedBody).to.contain('"prompt":"cat"')
@@ -66,8 +66,8 @@ describe('model invoke', () => {
       'invoke',
       '--model-type',
       'text-to-image',
-      '--model-id',
-      'qwen-image-plus',
+      '--model-slug',
+      'bytedance/seedream-4.5-t2i',
       '--body',
       '{"prompt":"cat"}',
     ])
@@ -81,8 +81,8 @@ describe('model invoke', () => {
       'invoke',
       '--model-type',
       'text-to-audio',
-      '--model-id',
-      'qwen-image-plus',
+      '--model-slug',
+      'bytedance/seedream-4.5-t2i',
       '--api-key',
       'test-key',
       '--body',
@@ -91,5 +91,23 @@ describe('model invoke', () => {
 
     expect(error?.message).to.contain('Expected --model-type=')
     expect(error?.message).to.contain('text-to-image')
+  })
+
+  it('fails when model-slug format is invalid', async () => {
+    const {error} = await runCommand([
+      'model',
+      'invoke',
+      '--model-type',
+      'text-to-image',
+      '--model-slug',
+      'seedream-4.5-t2i',
+      '--api-key',
+      'test-key',
+      '--body',
+      '{"prompt":"cat"}',
+    ])
+
+    expect(error?.message).to.contain('Invalid model slug')
+    expect(error?.message).to.contain('provider/model')
   })
 })

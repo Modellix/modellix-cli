@@ -61,19 +61,19 @@ Current supported `--model-type` enum values:
 Use inline JSON body:
 
 ```sh
-modellix-cli model invoke --model-type text-to-image --model-id qwen-image-plus --body '{"prompt":"A cute cat playing in a garden on a sunny day"}'
+modellix-cli model invoke --model-type text-to-image --model-slug bytedance/seedream-4.5-t2i --body '{"prompt":"A cute cat playing in a garden on a sunny day"}'
 ```
 
 Use JSON file body:
 
 ```sh
-modellix-cli model invoke --model-type text-to-image --model-id qwen-image-plus --body-file ./payload.json
+modellix-cli model invoke --model-type image-to-image --model-slug alibaba/qwen-image-edit --body-file ./payload.json
 ```
 
 Common flags:
 
 - `--model-type` (required): model type path, for example `text-to-image`
-- `--model-id` (required): model id, for example `qwen-image-plus`
+- `--model-slug` (required): model slug in `provider/model` format, for example `bytedance/seedream-4.5-t2i`
 - `--body`: request JSON string
 - `--body-file`: path to request JSON file
 - `--api-key`: API key (overrides env var)

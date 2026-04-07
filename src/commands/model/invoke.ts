@@ -8,8 +8,8 @@ import {invokeModelAsync} from '../../lib/modellix-client.js'
 export default class ModelInvoke extends Command {
   static description = 'Create an async Modellix model task'
   static examples = [
-    '<%= config.bin %> <%= command.id %> --model-type text-to-image --model-id qwen-image-plus --body \'{"prompt":"A cute cat"}\'',
-    '<%= config.bin %> <%= command.id %> --model-type text-to-image --model-id qwen-image-plus --body-file ./payload.json --api-key <key>',
+    '<%= config.bin %> <%= command.id %> --model-type text-to-image --model-slug bytedance/seedream-4.5-t2i --body \'{"prompt":"A cute cat"}\'',
+    '<%= config.bin %> <%= command.id %> --model-type image-to-image --model-slug alibaba/qwen-image-edit --body-file ./payload.json --api-key <key>',
   ]
   static flags = {
     'api-key': Flags.string({
@@ -23,8 +23,8 @@ export default class ModelInvoke extends Command {
       description: 'Path to a JSON file used as request body',
       exclusive: ['body'],
     }),
-    'model-id': Flags.string({
-      description: 'Model ID, for example qwen-image-plus',
+    'model-slug': Flags.string({
+      description: 'Model slug in provider/model format, for example bytedance/seedream-4.5-t2i',
       required: true,
     }),
     'model-type': Flags.string({
@@ -45,7 +45,7 @@ export default class ModelInvoke extends Command {
     const response = await invokeModelAsync({
       apiKey,
       body,
-      modelId: flags['model-id'],
+      modelSlug: flags['model-slug'],
       modelType: flags['model-type'],
     })
 
