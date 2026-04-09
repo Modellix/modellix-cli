@@ -30,7 +30,6 @@ export type InvokeModelAsyncInput = {
   apiKey: string
   body: JsonValue
   modelSlug: string
-  modelType: string
 }
 
 let httpRequester: (options: HttpRequestOptions) => Promise<HttpResponse> = performHttpRequest
@@ -42,9 +41,8 @@ export function __setHttpRequesterForTest(
 }
 
 export async function invokeModelAsync(input: InvokeModelAsyncInput): Promise<JsonValue> {
-  const modelType = encodeURIComponent(input.modelType)
   const {modelId, provider} = parseModelSlug(input.modelSlug)
-  const path = `/api/v1/${modelType}/${encodeURIComponent(provider)}/${encodeURIComponent(modelId)}/async`
+  const path = `/api/v1/${encodeURIComponent(provider)}/${encodeURIComponent(modelId)}/async`
 
   return requestJson({
     apiKey: input.apiKey,

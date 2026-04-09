@@ -2,14 +2,13 @@ import {Command, Flags} from '@oclif/core'
 
 import {resolveApiKey} from '../../lib/auth.js'
 import {parseModelInvokeBody} from '../../lib/body.js'
-import {MODEL_TYPES} from '../../lib/model-types.js'
 import {invokeModelAsync} from '../../lib/modellix-client.js'
 
 export default class ModelInvoke extends Command {
   static description = 'Create an async Modellix model task'
   static examples = [
-    '<%= config.bin %> <%= command.id %> --model-type text-to-image --model-slug bytedance/seedream-4.5-t2i --body \'{"prompt":"A cute cat"}\'',
-    '<%= config.bin %> <%= command.id %> --model-type image-to-image --model-slug alibaba/qwen-image-edit --body-file ./payload.json --api-key <key>',
+    '<%= config.bin %> <%= command.id %> --model-slug bytedance/seedream-4.5-t2i --body \'{"prompt":"A cute cat"}\'',
+    '<%= config.bin %> <%= command.id %> --model-slug alibaba/qwen-image-edit --body-file ./payload.json --api-key <key>',
   ]
   static flags = {
     'api-key': Flags.string({
@@ -27,11 +26,6 @@ export default class ModelInvoke extends Command {
       description: 'Model slug in provider/model format, for example bytedance/seedream-4.5-t2i',
       required: true,
     }),
-    'model-type': Flags.string({
-      description: 'Model type path segment, for example text-to-image',
-      options: [...MODEL_TYPES],
-      required: true,
-    }),
   }
 
   async run(): Promise<void> {
@@ -46,7 +40,6 @@ export default class ModelInvoke extends Command {
       apiKey,
       body,
       modelSlug: flags['model-slug'],
-      modelType: flags['model-type'],
     })
 
     this.log(JSON.stringify(response, null, 2))

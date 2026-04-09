@@ -38,8 +38,6 @@ describe('model invoke', () => {
     const {error, stdout} = await runCommand([
       'model',
       'invoke',
-      '--model-type',
-      'text-to-image',
       '--model-slug',
       'bytedance/seedream-4.5-t2i',
       '--api-key',
@@ -49,7 +47,7 @@ describe('model invoke', () => {
     ])
 
     expect(error).to.equal(undefined)
-    expect(receivedPath).to.equal('/api/v1/text-to-image/bytedance/seedream-4.5-t2i/async')
+    expect(receivedPath).to.equal('/api/v1/bytedance/seedream-4.5-t2i/async')
     expect(receivedApiKey).to.equal('test-key')
     expect(receivedMethod).to.equal('POST')
     expect(receivedBody).to.contain('"prompt":"cat"')
@@ -64,8 +62,6 @@ describe('model invoke', () => {
     const {error} = await runCommand([
       'model',
       'invoke',
-      '--model-type',
-      'text-to-image',
       '--model-slug',
       'bytedance/seedream-4.5-t2i',
       '--body',
@@ -75,30 +71,10 @@ describe('model invoke', () => {
     expect(error?.message).to.contain('Missing API key')
   })
 
-  it('fails when model-type is not in enum options', async () => {
-    const {error} = await runCommand([
-      'model',
-      'invoke',
-      '--model-type',
-      'text-to-audio',
-      '--model-slug',
-      'bytedance/seedream-4.5-t2i',
-      '--api-key',
-      'test-key',
-      '--body',
-      '{"prompt":"cat"}',
-    ])
-
-    expect(error?.message).to.contain('Expected --model-type=')
-    expect(error?.message).to.contain('text-to-image')
-  })
-
   it('fails when model-slug format is invalid', async () => {
     const {error} = await runCommand([
       'model',
       'invoke',
-      '--model-type',
-      'text-to-image',
       '--model-slug',
       'seedream-4.5-t2i',
       '--api-key',

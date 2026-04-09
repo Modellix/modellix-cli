@@ -36,49 +36,28 @@ $env:MODELLIX_API_KEY="your_api_key"
 
 ## Core Commands
 
-### 1) List available model types
-
-```sh
-modellix-cli model types
-```
-
-JSON output:
-
-```sh
-modellix-cli model types --json
-```
-
-Current supported `--model-type` enum values:
-
-- `text-to-image`
-- `text-to-video`
-- `image-to-image`
-- `image-to-video`
-- `video-to-video`
-
-### 2) Create a model task
+### 1) Create a model task
 
 Use inline JSON body:
 
 ```sh
-modellix-cli model invoke --model-type text-to-image --model-slug bytedance/seedream-4.5-t2i --body '{"prompt":"A cute cat playing in a garden on a sunny day"}'
+modellix-cli model invoke --model-slug bytedance/seedream-4.5-t2i --body '{"prompt":"A cute cat playing in a garden on a sunny day"}'
 ```
 
 Use JSON file body:
 
 ```sh
-modellix-cli model invoke --model-type image-to-image --model-slug alibaba/qwen-image-edit --body-file ./payload.json
+modellix-cli model invoke --model-slug alibaba/qwen-image-edit --body-file ./payload.json
 ```
 
 Common flags:
 
-- `--model-type` (required): model type path, for example `text-to-image`
 - `--model-slug` (required): model slug in `provider/model` format, for example `bytedance/seedream-4.5-t2i`
 - `--body`: request JSON string
 - `--body-file`: path to request JSON file
 - `--api-key`: API key (overrides env var)
 
-### 3) Query task result
+### 2) Query task result
 
 ```sh
 modellix-cli task get <task_id>
@@ -92,9 +71,8 @@ modellix-cli task get task-abc123
 
 ## Recommended Workflow
 
-1. Run `modellix-cli model types` to check supported model type values.
-2. Run `modellix-cli model invoke ...` and copy the returned `task_id`.
-3. Run `modellix-cli task get <task_id>` to get status and result.
+1. Run `modellix-cli model invoke ...` and copy the returned `task_id`.
+2. Run `modellix-cli task get <task_id>` to get status and result.
 
 ## Troubleshooting
 
