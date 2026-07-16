@@ -541,7 +541,7 @@ function buildApiErrorMessage(
     }
 
     case 401: {
-      return `Modellix API error (401 Unauthorized).${detail} Verify your API key.`
+      return `Modellix API error (401 Unauthorized).${detail} Run modellix-cli init, set MODELLIX_API_KEY, or pass --api-key.`
     }
 
     case 402: {

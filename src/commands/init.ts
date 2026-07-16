@@ -15,6 +15,7 @@ import {
   readConfig,
   writeConfig,
 } from '../lib/config.js'
+import {MODELLIX_API_KEY_URL, MODELLIX_CLI_DOCS_URL} from '../lib/links.js'
 import {validateApiKey} from '../lib/modellix-client.js'
 
 type InitKeySource = 'prompt' | ApiKeySource
@@ -36,6 +37,7 @@ type InitPrompter = {
 type InitResult = {
   apiKeySource: InitKeySource
   configPath: string
+  docs: string
   nextSteps: string[]
   ok: true
   profile: string
@@ -96,6 +98,8 @@ export default class Init extends BaseCommand {
       for (const step of result.nextSteps) {
         this.log(`  ${step}`)
       }
+
+      this.log(`Docs: ${result.docs}`)
     } catch (error) {
       const message = errorMessage(error)
       this.error(message, {exit: 1})
@@ -131,7 +135,13 @@ export default class Init extends BaseCommand {
     return {
       apiKeySource,
       configPath,
-      nextSteps: ['modellix-cli doctor', 'modellix-cli model list', 'modellix-cli model run --help'],
+      docs: MODELLIX_CLI_DOCS_URL,
+      nextSteps: [
+        'modellix-cli doctor',
+        'modellix-cli model list',
+        'modellix-cli model run --model-slug <provider/model> --body \'{"prompt":"A cute cat"}\'',
+        'modellix-cli task get <task_id>',
+      ],
       ok: true,
       profile,
       saved,
@@ -240,7 +250,7 @@ async function promptForApiKey(): Promise<string> {
   const apiKey = (
     await prompter.password({
       mask: '*',
-      message: 'Enter your Modellix API key (https://console.modellix.ai):',
+      message: `Enter your Modellix API key (${MODELLIX_API_KEY_URL}):`,
     })
   ).trim()
   if (!apiKey) {

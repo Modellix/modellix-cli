@@ -45,6 +45,8 @@ describe('quickstart', () => {
     expect(error).to.equal(undefined)
     expect(report).to.include({apiKeySource: 'missing', configured: false, ok: true})
     expect(report.nextSteps).to.be.an('array').that.includes('modellix-cli init')
+    expect(report).to.include({docs: 'https://docs.modellix.ai/ways-to-use/cli'})
+    expect(JSON.stringify(report.nextSteps)).to.contain('https://www.modellix.ai/console/api-key')
     expect(requestCount).to.equal(0)
   })
 
@@ -56,6 +58,7 @@ describe('quickstart', () => {
 
     expect(error).to.equal(undefined)
     expect(report).to.include({apiKeySource: 'environment', configured: true, ok: true})
+    expect(JSON.stringify(report.nextSteps)).to.contain('modellix-cli task get <task_id>')
     expect(`${stdout}${stderr}`).not.to.contain('quickstart-environment-test-key')
     expect(requestCount).to.equal(0)
   })
@@ -96,6 +99,14 @@ describe('quickstart', () => {
     expect(error).to.equal(undefined)
     expect(report).to.include({profile: 'work', profileSource: 'environment'})
     expect(stdout).not.to.contain('work-quickstart-key')
+  })
+
+  it('prints the standard help and CLI documentation footer in human output', async () => {
+    const {error, stdout} = await runCommand(['quickstart'])
+
+    expect(error).to.equal(undefined)
+    expect(stdout).to.contain('Help: modellix-cli --help')
+    expect(stdout).to.contain('Docs: https://docs.modellix.ai/ways-to-use/cli')
   })
 })
 

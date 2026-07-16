@@ -10,6 +10,10 @@ import {getConfigFilePath, readConfig} from '../../lib/config.js'
 
 export default class ConfigPath extends BaseCommand {
   static description = 'Print the Modellix configuration file path'
+  static examples = [
+    '<%= config.bin %> <%= command.id %>',
+    '<%= config.bin %> <%= command.id %> --json',
+  ]
   static flags = {
     json: Flags.boolean({description: 'Print a machine-readable JSON result'}),
     profile: profileFlag,

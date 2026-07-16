@@ -5,7 +5,7 @@
 ## Requirements
 
 - Node.js 18.17 or later
-- A Modellix API key from the [Modellix Console](https://console.modellix.ai)
+- A Modellix API key from the [Modellix Console](https://www.modellix.ai/console/api-key)
 
 ## Install
 
@@ -19,7 +19,17 @@ Verify the installation:
 modellix-cli --version
 ```
 
-Running `modellix-cli` without arguments prints a local Quickstart. It does not make a network request or start an interactive wizard.
+Running `modellix-cli` without arguments prints a local Quickstart with the API-key setup link, copyable next steps, standard help command, and the [CLI guide](https://docs.modellix.ai/ways-to-use/cli). It does not make an API request or start an interactive wizard.
+
+Human and automation entry points:
+
+```sh
+modellix-cli
+modellix-cli quickstart
+modellix-cli --json
+modellix-cli --output quiet
+modellix-cli --help
+```
 
 ## Feature matrix
 
@@ -63,7 +73,7 @@ modellix-cli model run \
   --body '{"prompt":"A cute cat playing in a sunny garden"}'
 
 # Query the task ID returned by the model
-modellix-cli task wait task-abc123
+modellix-cli task get task-abc123
 ```
 
 ## Authentication and profiles
@@ -141,6 +151,7 @@ Non-interactive setup:
 
 ```sh
 modellix-cli init --api-key "$MODELLIX_API_KEY" --yes
+modellix-cli init --api-key "$MODELLIX_API_KEY" --yes --json
 ```
 
 Validate without writing a configuration file:
@@ -149,7 +160,7 @@ Validate without writing a configuration file:
 modellix-cli init --api-key "$MODELLIX_API_KEY" --check
 ```
 
-Use `--force` to recover or replace an unreadable configuration; `--yes` only accepts an ordinary replacement confirmation. Add `--profile NAME` for a named profile and `--json` for a stable machine-readable result. In a non-interactive terminal, `init` fails immediately when no key is already available instead of waiting for input.
+Use `--force` to recover or replace an unreadable configuration; `--yes` only accepts an ordinary replacement confirmation. Add `--profile NAME` for a named profile and `--json` for a stable machine-readable result. Successful human and JSON output include copyable model/task next steps and the CLI documentation URL. In a non-interactive terminal, `init` fails immediately when no key is already available instead of waiting for input.
 
 ## Diagnose the environment
 
@@ -341,6 +352,8 @@ When output flags overlap, quiet output wins over JSON, then JSON wins over the 
 For CI:
 
 ```sh
+modellix-cli --json
+modellix-cli init --api-key "$MODELLIX_API_KEY" --yes --json
 modellix-cli doctor --json --no-color --no-progress
 ```
 
@@ -396,6 +409,15 @@ modellix-cli autocomplete powershell
 
 The command prints shell-specific installation instructions and can refresh its command cache with `--refresh-cache`.
 
+The autocomplete plugin also exposes maintenance subcommands used by its shell setup scripts:
+
+```sh
+modellix-cli autocomplete create
+modellix-cli autocomplete script bash
+modellix-cli autocomplete script zsh
+modellix-cli autocomplete script powershell
+```
+
 ## Troubleshooting
 
 ### Missing API key
@@ -404,7 +426,7 @@ Run `modellix-cli init`, set `MODELLIX_API_KEY`, or pass `--api-key`.
 
 ### 401 Unauthorized
 
-Run `modellix-cli doctor`. The key may be invalid, expired, or revoked.
+Run `modellix-cli init`, set `MODELLIX_API_KEY`, or pass `--api-key`; then use `modellix-cli doctor` to verify the repaired setup. The key may be invalid, expired, or revoked.
 
 ### 402 Payment Required
 
@@ -426,10 +448,11 @@ Result downloads default to HTTPS and public network destinations. Only use `--a
 
 ```sh
 modellix-cli --help
+modellix-cli help --nested-commands
 modellix-cli <command> --help
 ```
 
-Misspelled commands receive a nearest-command suggestion in interactive terminals.
+Misspelled commands receive a nearest-command suggestion in both interactive and non-interactive terminals. Suggestions are never executed automatically.
 
 ## Backend-dependent exclusions
 
@@ -541,6 +564,11 @@ GLOBAL FLAGS
 
 DESCRIPTION
   Remove a saved Modellix authentication profile
+
+EXAMPLES
+  $ modellix-cli auth logout --profile work
+
+  $ modellix-cli auth logout --profile work --yes --json
 ```
 
 _See code: [src/commands/auth/logout.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/auth/logout.ts)_
@@ -571,6 +599,13 @@ GLOBAL FLAGS
 
 DESCRIPTION
   Show and verify the active Modellix authentication without revealing the key
+
+EXAMPLES
+  $ modellix-cli auth status
+
+  $ modellix-cli auth status --profile work --json
+
+  $ modellix-cli auth status --api-key <key>
 ```
 
 _See code: [src/commands/auth/status.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/auth/status.ts)_
@@ -601,6 +636,13 @@ GLOBAL FLAGS
 
 DESCRIPTION
   Show and verify the active Modellix authentication without revealing the key
+
+EXAMPLES
+  $ modellix-cli auth whoami
+
+  $ modellix-cli auth whoami --profile work --json
+
+  $ modellix-cli auth whoami --api-key <key>
 ```
 
 _See code: [src/commands/auth/whoami.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/auth/whoami.ts)_
@@ -696,6 +738,11 @@ GLOBAL FLAGS
 
 DESCRIPTION
   Print the Modellix configuration file path
+
+EXAMPLES
+  $ modellix-cli config path
+
+  $ modellix-cli config path --json
 ```
 
 _See code: [src/commands/config/path.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/config/path.ts)_
@@ -725,6 +772,11 @@ GLOBAL FLAGS
 
 DESCRIPTION
   Show Modellix configuration status without revealing the API key
+
+EXAMPLES
+  $ modellix-cli config show
+
+  $ modellix-cli config show --profile work --json
 ```
 
 _See code: [src/commands/config/show.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/config/show.ts)_
@@ -1229,5 +1281,6 @@ _See code: [src/commands/task/wait.ts](https://github.com/Modellix/modellix-cli/
 
 - [Modellix documentation](https://docs.modellix.ai/get-started)
 - [Modellix CLI guide](https://docs.modellix.ai/ways-to-use/cli)
+- [Modellix Agent Skill](https://docs.modellix.ai/ways-to-use/skill)
 - [List Models API](https://docs.modellix.ai/api/list-models)
 - [Validate API Key API](https://docs.modellix.ai/api/validate-api-key)

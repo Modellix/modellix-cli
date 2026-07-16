@@ -56,6 +56,8 @@ describe('init', () => {
     expect(error).to.equal(undefined)
     expect(stderr).not.to.contain('valid-init-test-key')
     expect(report).to.include({apiKeySource: 'flag', ok: true, saved: true, valid: true})
+    expect(report).to.include({docs: 'https://docs.modellix.ai/ways-to-use/cli'})
+    expect(JSON.stringify(report.nextSteps)).to.contain('modellix-cli task get <task_id>')
     expect(await readConfig()).to.deep.equal({apiKey: 'valid-init-test-key'})
     expect(requestCount).to.equal(1)
     expect(stdout).not.to.contain('valid-init-test-key')
@@ -165,6 +167,7 @@ describe('init', () => {
     const {error, stderr, stdout} = await runCommand(['init', '--force'])
 
     expect(error).to.equal(undefined)
+    expect(stdout).to.contain('Docs: https://docs.modellix.ai/ways-to-use/cli')
     expect(await readConfig()).to.deep.equal({apiKey: 'rotated-config-test-key'})
     expect(`${stdout}${stderr}`).not.to.contain('rotated-config-test-key')
     expect(requestCount).to.equal(1)

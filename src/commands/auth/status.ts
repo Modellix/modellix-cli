@@ -24,6 +24,11 @@ type AuthStatusResult = {
 
 export default class AuthStatus extends BaseCommand {
   static description = 'Show and verify the active Modellix authentication without revealing the key'
+  static examples = [
+    '<%= config.bin %> <%= command.id %>',
+    '<%= config.bin %> <%= command.id %> --profile work --json',
+    '<%= config.bin %> <%= command.id %> --api-key <key>',
+  ]
   static flags = {
     'api-key': apiKeyFlag,
     json: Flags.boolean({description: 'Print one machine-readable JSON result'}),

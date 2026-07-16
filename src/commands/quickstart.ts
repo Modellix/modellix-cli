@@ -8,11 +8,13 @@ import {
   resolveProfile,
 } from '../lib/auth.js'
 import {DEFAULT_PROFILE} from '../lib/config.js'
+import {MODELLIX_API_KEY_URL, MODELLIX_CLI_DOCS_URL} from '../lib/links.js'
 
 type QuickstartReport = {
   apiKeySource: 'missing' | ApiKeySource
   configurationWarning?: string
   configured: boolean
+  docs: string
   nextSteps: string[]
   ok: true
   profile: string
@@ -54,16 +56,17 @@ export default class Quickstart extends BaseCommand {
           'modellix-cli doctor',
           'modellix-cli model list',
           'modellix-cli model run --model-slug <provider/model> --body \'{"prompt":"Hello"}\'',
-          'modellix-cli task wait <task_id>',
+          'modellix-cli task get <task_id>',
         ]
       : [
-          'Get an API key at https://console.modellix.ai',
+          `Get an API key at ${MODELLIX_API_KEY_URL}`,
           'modellix-cli init',
           'modellix-cli doctor',
         ]
     const report: QuickstartReport = {
       apiKeySource,
       configured,
+      docs: MODELLIX_CLI_DOCS_URL,
       nextSteps,
       ok: true,
       profile,
@@ -97,6 +100,10 @@ export default class Quickstart extends BaseCommand {
     for (const step of nextSteps) {
       this.log(`  ${step}`)
     }
+
+    this.log('')
+    this.log('Help: modellix-cli --help')
+    this.log(`Docs: ${MODELLIX_CLI_DOCS_URL}`)
   }
 }
 

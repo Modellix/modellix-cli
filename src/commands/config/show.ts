@@ -28,6 +28,10 @@ type ConfigStatus = {
 
 export default class ConfigShow extends BaseCommand {
   static description = 'Show Modellix configuration status without revealing the API key'
+  static examples = [
+    '<%= config.bin %> <%= command.id %>',
+    '<%= config.bin %> <%= command.id %> --profile work --json',
+  ]
   static flags = {
     json: Flags.boolean({description: 'Print a machine-readable JSON result'}),
     profile: profileFlag,

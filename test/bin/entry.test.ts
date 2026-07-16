@@ -26,6 +26,9 @@ describe('CLI entry', () => {
     expect(stderr).to.equal('')
     expect(stdout).to.contain('Welcome to Modellix CLI.')
     expect(stdout).to.contain('modellix-cli init')
+    expect(stdout).to.contain('https://www.modellix.ai/console/api-key')
+    expect(stdout).to.contain('Help: modellix-cli --help')
+    expect(stdout).to.contain('Docs: https://docs.modellix.ai/ways-to-use/cli')
   })
 
   it('keeps explicit root help unchanged', async () => {

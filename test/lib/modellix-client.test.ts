@@ -148,6 +148,20 @@ describe('modellix client', () => {
     expect(error.message).to.match(/JSON|response/i)
   })
 
+  it('provides executable recovery steps for an unauthorized API key', async () => {
+    __setHttpRequesterForTest(async () => ({
+      bodyText: '{"message":"unauthorized"}',
+      headers: {},
+      statusCode: 401,
+    }))
+
+    const error = await captureError(() => listModels({apiKey: 'unauthorized-test-key'}))
+    expect(error.message).to.contain('modellix-cli init')
+    expect(error.message).to.contain('MODELLIX_API_KEY')
+    expect(error.message).to.contain('--api-key')
+    expect(error.message).not.to.contain('unauthorized-test-key')
+  })
+
   it('passes a bounded request deadline to task polling', async () => {
     let receivedTimeout = 0
     __setHttpRequesterForTest(async (options) => {

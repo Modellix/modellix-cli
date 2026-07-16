@@ -7,6 +7,10 @@ import {getConfigFilePath, removeProfile} from '../../lib/config.js'
 
 export default class AuthLogout extends BaseCommand {
   static description = 'Remove a saved Modellix authentication profile'
+  static examples = [
+    '<%= config.bin %> <%= command.id %> --profile work',
+    '<%= config.bin %> <%= command.id %> --profile work --yes --json',
+  ]
   static flags = {
     json: Flags.boolean({description: 'Print one machine-readable JSON result'}),
     profile: profileFlag,
