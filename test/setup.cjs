@@ -1,0 +1,1 @@
+process.env.MODELLIX_CLI_SKIP_NEW_VERSION_CHECK = 'true'

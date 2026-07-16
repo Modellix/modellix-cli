@@ -5,10 +5,11 @@
 /dist
 /tmp
 /node_modules
+modellix-apikey-model-cli.txt
 oclif.manifest.json
+*.tsbuildinfo
 
 
 
 yarn.lock
 pnpm-lock.yaml
-

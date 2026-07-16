@@ -1,15 +1,19 @@
 {
   "name": "modellix-cli",
   "description": "Official CLI for Modellix model services.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "author": "Modellix",
   "bin": {
     "modellix-cli": "bin/run.js"
   },
   "bugs": "https://github.com/Modellix/modellix-cli/issues",
   "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
     "@oclif/core": "^4",
-    "@oclif/plugin-help": "^6"
+    "@oclif/plugin-autocomplete": "^3.2.53",
+    "@oclif/plugin-help": "^6",
+    "@oclif/plugin-warn-if-update-available": "^3.1.68",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
     "@eslint/compat": "^1",
@@ -18,6 +22,7 @@
     "@types/chai": "^4",
     "@types/mocha": "^10",
     "@types/node": "^18",
+    "@types/proper-lockfile": "^4.1.4",
     "chai": "^4",
     "eslint": "^9",
     "eslint-config-oclif": "^6",
@@ -29,10 +34,11 @@
     "typescript": "^5"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.17.0"
   },
   "files": [
-    "./bin",
+    "./bin/run.js",
+    "./bin/runtime.js",
     "./dist",
     "./oclif.manifest.json"
   ],
@@ -53,15 +59,52 @@
   ],
   "license": "MIT",
   "main": "dist/index.js",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "oclif": {
     "bin": "modellix-cli",
     "dirname": "modellix-cli",
+    "hooks": {
+      "command_not_found": "./dist/hooks/command-not-found"
+    },
     "commands": "./dist/commands",
     "plugins": [
-      "@oclif/plugin-help"
+      "@oclif/plugin-help",
+      "@oclif/plugin-autocomplete",
+      "@oclif/plugin-warn-if-update-available"
     ],
-    "topicSeparator": " "
+    "repositoryPrefix": "<%- repo %>/blob/main/<%- commandPath %>",
+    "topicSeparator": " ",
+    "topics": {
+      "auth": {
+        "description": "Manage API-key authentication profiles"
+      },
+      "config": {
+        "description": "Inspect and clear local CLI configuration"
+      },
+      "model": {
+        "description": "Discover and run Modellix models"
+      },
+      "task": {
+        "description": "Inspect, wait for, download, and track tasks"
+      }
+    },
+    "warn-if-update-available": {
+      "authorization": "Bearer public-registry-read",
+      "frequency": 1,
+      "frequencyUnit": "days",
+      "registry": "https://registry.npmjs.org",
+      "timeoutInDays": 7
+    }
+  },
+  "overrides": {
+    "mocha": {
+      "diff": "8.0.3",
+      "serialize-javascript": "7.0.7"
+    }
   },
   "repository": {
     "type": "git",
@@ -72,9 +115,12 @@
     "lint": "eslint",
     "postpack": "shx rm -f oclif.manifest.json",
     "posttest": "npm run lint",
-    "prepack": "npm run build && oclif manifest && oclif readme",
+    "prepack": "npm run build && oclif manifest && oclif readme && node scripts/normalize-readme.mjs",
+    "prepublishOnly": "npm run typecheck && npm test",
+    "pretest": "shx rm -rf dist oclif.manifest.json tsconfig.tsbuildinfo",
     "test": "mocha --forbid-only \"test/**/*.test.ts\"",
-    "version": "oclif readme && git add README.md"
+    "typecheck": "tsc --noEmit --pretty false",
+    "version": "oclif readme && node scripts/normalize-readme.mjs && git add README.md"
   },
   "types": "dist/index.d.ts"
 }
