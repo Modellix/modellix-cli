@@ -69,7 +69,7 @@ modellix-cli model list
 
 # Submit a model job
 modellix-cli model run \
-  --model-slug bytedance/seedream-4.5-t2i \
+  --model-slug bytedance/seedream-5.0-pro \
   --body '{"prompt":"A cute cat playing in a sunny garden"}'
 
 # Query the task ID returned by the model
@@ -214,7 +214,7 @@ Use an inline JSON payload:
 
 ```sh
 modellix-cli model run \
-  --model-slug bytedance/seedream-4.5-t2i \
+  --model-slug bytedance/seedream-5.0-pro \
   --body '{"prompt":"A cute cat"}'
 ```
 
@@ -984,7 +984,7 @@ FLAGS
       --body-file=<value>       Path to a JSON file used as request body
       --interval=<value>        [default: 2s] Polling interval when --wait is enabled (for example 5s or 1m)
       --max-body-bytes=<value>  [default: 67108864] Maximum JSON request body size in bytes
-      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-4.5-t2i
+      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-5.0-pro
       --output=<option>         [default: json] Output format
                                 <options: human|json|quiet|task-id>
       --timeout=<value>         [default: 5m] Maximum time to wait (for example 30s, 5m, or 1h)
@@ -1006,7 +1006,7 @@ ALIASES
   $ modellix-cli model invoke
 
 EXAMPLES
-  $ modellix-cli model invoke --model-slug bytedance/seedream-4.5-t2i --body '{"prompt":"A cute cat"}'
+  $ modellix-cli model invoke --model-slug bytedance/seedream-5.0-pro --body '{"prompt":"A cute cat"}'
 
   $ modellix-cli model invoke --model-slug alibaba/qwen-image-edit --body-file ./payload.json --api-key <key>
 
@@ -1076,7 +1076,7 @@ FLAGS
       --body-file=<value>       Path to a JSON file used as request body
       --interval=<value>        [default: 2s] Polling interval when --wait is enabled (for example 5s or 1m)
       --max-body-bytes=<value>  [default: 67108864] Maximum JSON request body size in bytes
-      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-4.5-t2i
+      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-5.0-pro
       --output=<option>         [default: json] Output format
                                 <options: human|json|quiet|task-id>
       --timeout=<value>         [default: 5m] Maximum time to wait (for example 30s, 5m, or 1h)
@@ -1098,7 +1098,7 @@ ALIASES
   $ modellix-cli model invoke
 
 EXAMPLES
-  $ modellix-cli model run --model-slug bytedance/seedream-4.5-t2i --body '{"prompt":"A cute cat"}'
+  $ modellix-cli model run --model-slug bytedance/seedream-5.0-pro --body '{"prompt":"A cute cat"}'
 
   $ modellix-cli model run --model-slug alibaba/qwen-image-edit --body-file ./payload.json --api-key <key>
 
