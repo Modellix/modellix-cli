@@ -3,13 +3,18 @@ import {mkdir, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
 
+import {findApiKey} from '../../src/lib/auth.js'
 import {
+  CONFIG_SCHEMA_VERSION,
   type ConfigPathOptions,
   getConfigFilePath,
   readConfig,
   removeProfile,
   writeConfig,
 } from '../../src/lib/config.js'
+import {getCredentialFilePath} from '../../src/lib/credential-store.js'
+
+const productionOrigin = 'https://api.modellix.ai'
 
 describe('config', () => {
   let options: ConfigPathOptions
@@ -39,21 +44,24 @@ describe('config', () => {
     expect(await readConfig(options)).to.equal(undefined)
   })
 
-  it('writes and reads a valid config without using the real home directory', async () => {
+  it('writes metadata to config and keeps the secret in the explicit credential file', async () => {
     const configPath = await writeConfig({apiKey: 'config-test-key'}, options)
 
     expect(configPath).to.equal(join(temporaryXdgDirectory, 'modellix', 'config.json'))
-    expect(await readConfig(options)).to.deep.equal({apiKey: 'config-test-key'})
+    const config = await readConfig(options)
+    expect(config?.schemaVersion).to.equal(CONFIG_SCHEMA_VERSION)
+    expect(config?.currentProfile).to.equal('default')
+    expect(config?.profiles.default.origins[productionOrigin].store).to.equal('file')
 
-    const stored = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
-    expect(stored).to.deep.equal({
-      currentProfile: 'default',
-      profiles: {default: {apiKey: 'config-test-key'}},
-    })
+    const storedConfig = await readFile(configPath, 'utf8')
+    const storedCredentials = await readFile(getCredentialFilePath(options), 'utf8')
+    expect(storedConfig).not.to.contain('config-test-key')
+    expect(storedCredentials).to.contain('config-test-key')
+    expect(await readSavedKey('default')).to.equal('config-test-key')
 
     if (process.platform !== 'win32') {
-      const fileStat = await stat(configPath)
-      expect(fileStat.mode.toString(8).slice(-3)).to.equal('600')
+      expect((await stat(configPath)).mode.toString(8).slice(-3)).to.equal('600')
+      expect((await stat(getCredentialFilePath(options))).mode.toString(8).slice(-3)).to.equal('600')
     }
   })
 
@@ -66,7 +74,7 @@ describe('config', () => {
     expect(error.message).to.match(/config|JSON/i)
   })
 
-  it('rejects a config whose apiKey is not a non-empty string', async () => {
+  it('rejects a legacy config whose apiKey is not a non-empty string', async () => {
     const configPath = getConfigFilePath(options)
     await mkdir(dirname(configPath), {recursive: true})
     await writeFile(configPath, JSON.stringify({apiKey: 42}), 'utf8')
@@ -75,15 +83,17 @@ describe('config', () => {
     expect(error.message).to.match(/apiKey|config/i)
   })
 
-  it('reads the legacy single-key schema without modifying the file', async () => {
+  it('reads the legacy single-key schema without modifying the file or enumerating the key', async () => {
     const configPath = getConfigFilePath(options)
     await mkdir(dirname(configPath), {recursive: true})
-    await writeFile(configPath, JSON.stringify({apiKey: 'legacy-test-key'}), 'utf8')
+    const legacy = JSON.stringify({apiKey: 'legacy-test-key'})
+    await writeFile(configPath, legacy, 'utf8')
 
     const config = await readConfig(options)
-    expect(config).to.deep.equal({apiKey: 'legacy-test-key'})
     expect(config?.currentProfile).to.equal('default')
-    expect(config?.profiles).to.deep.equal({default: {apiKey: 'legacy-test-key'}})
+    expect(config?.legacyApiKeys).to.deep.equal({default: 'legacy-test-key'})
+    expect(JSON.stringify(config)).not.to.contain('legacy-test-key')
+    expect(await readFile(configPath, 'utf8')).to.equal(legacy)
   })
 
   it('preserves multiple profiles and switches the current profile', async () => {
@@ -92,25 +102,23 @@ describe('config', () => {
 
     const config = await readConfig(options)
     expect(config?.currentProfile).to.equal('work')
-    expect(config?.apiKey).to.equal('work-test-key')
-    expect(config?.profiles).to.deep.equal({
-      default: {apiKey: 'default-test-key'},
-      work: {apiKey: 'work-test-key'},
-    })
+    expect(Object.keys(config?.profiles ?? {})).to.deep.equal(['default', 'work'])
+    expect(await readSavedKey('default')).to.equal('default-test-key')
+    expect(await readSavedKey('work')).to.equal('work-test-key')
   })
 
-  it('removes one profile without deleting the remaining profiles', async () => {
+  it('removes one metadata profile without deleting the remaining profile', async () => {
     await writeConfig({apiKey: 'default-test-key', profile: 'default'}, options)
     await writeConfig({apiKey: 'work-test-key', profile: 'work'}, options)
 
-    expect(await removeProfile('work', options)).to.deep.equal({
+    const result = await removeProfile('work', options)
+    expect(result).to.deep.include({
       currentProfile: 'default',
       remainingProfiles: ['default'],
       removed: true,
     })
-    expect((await readConfig(options))?.profiles).to.deep.equal({
-      default: {apiKey: 'default-test-key'},
-    })
+    expect(result.origins).to.have.length(1)
+    expect(Object.keys((await readConfig(options))?.profiles ?? {})).to.deep.equal(['default'])
   })
 
   it('rejects profile names that could modify object prototypes', async () => {
@@ -123,7 +131,7 @@ describe('config', () => {
     expect(await readConfig(options)).to.equal(undefined)
   })
 
-  it('prefers the profile schema when a legacy apiKey is also present', async () => {
+  it('prefers the legacy profile schema when a legacy top-level apiKey is also present', async () => {
     const configPath = getConfigFilePath(options)
     await mkdir(dirname(configPath), {recursive: true})
     await writeFile(
@@ -137,7 +145,7 @@ describe('config', () => {
     )
 
     const config = await readConfig(options)
-    expect(config?.apiKey).to.equal('work-schema-key')
+    expect(config?.legacyApiKeys).to.deep.equal({work: 'work-schema-key'})
     expect(config?.currentProfile).to.equal('work')
   })
 
@@ -150,7 +158,7 @@ describe('config', () => {
     expect(error.message).to.match(/config|JSON/i)
 
     await writeConfig({apiKey: 'replacement-key', recover: true}, options)
-    expect((await readConfig(options))?.apiKey).to.equal('replacement-key')
+    expect(await readSavedKey('default')).to.equal('replacement-key')
   })
 
   it('refuses a stale compare-and-swap profile replacement', async () => {
@@ -164,8 +172,17 @@ describe('config', () => {
       ),
     )
     expect(error.message).to.contain('changed while')
-    expect((await readConfig(options))?.profiles.work.apiKey).to.equal('rotated-key')
+    expect(await readSavedKey('work')).to.equal('rotated-key')
   })
+
+  async function readSavedKey(profile: string): Promise<string | undefined> {
+    return (await findApiKey({
+      ...options,
+      ignoreEnvironment: true,
+      origin: productionOrigin,
+      profile,
+    }))?.apiKey
+  }
 })
 
 async function captureError(operation: () => Promise<unknown>): Promise<Error> {

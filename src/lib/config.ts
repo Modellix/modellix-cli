@@ -7,9 +7,11 @@ import {withFileLock} from './file-lock.js'
 import {InputFileSizeLimitError, readUtf8FileLimited} from './limited-input.js'
 import {normalizeApiKey, normalizeSafeText} from './safe-text.js'
 
+const DEFAULT_API_ORIGIN = 'https://api.modellix.ai'
+
+export const CONFIG_SCHEMA_VERSION = 2
 export const DEFAULT_PROFILE = 'default'
 const RESERVED_PROFILE_NAMES = new Set(['__proto__', 'constructor', 'prototype'])
-const MAX_API_KEY_LENGTH = 16_384
 const MAX_CONFIG_BYTES = 1024 * 1024
 const MAX_PROFILE_COUNT = 100
 const MAX_PROFILE_NAME_LENGTH = 64
@@ -19,30 +21,53 @@ export type ConfigPathOptions = {
   homeDirectory?: string
 }
 
+export type CredentialStoreKind = 'file' | 'keychain'
+
+export type CredentialMetadata = {
+  credentialRef: string
+  store: CredentialStoreKind
+}
+
 export type ModellixProfile = {
-  apiKey: string
+  origins: Record<string, CredentialMetadata>
 }
 
 /**
- * The top-level apiKey is a compatibility alias for the current profile.
- * Profile metadata is exposed to callers but kept non-enumerable so legacy
- * callers that compare or serialize `{apiKey}` continue to behave as before.
+ * API keys from v0.0.7 and older are exposed only through a non-enumerable
+ * property so they cannot leak through JSON output or diagnostics.
  */
 export type ModellixConfig = {
-  apiKey: string
   currentProfile: string
+  legacyApiKeys?: Record<string, string>
   profiles: Record<string, ModellixProfile>
+  schemaVersion: number
 }
 
 export type ProfileRemovalResult = {
   currentProfile?: string
+  legacyApiKey?: string
+  origins: Array<{metadata: CredentialMetadata; origin: string}>
   remainingProfiles: string[]
   removed: boolean
 }
 
+export type WriteProfileMetadataInput = {
+  credential: CredentialMetadata
+  origin: string
+  profile?: string
+  recover?: boolean
+  setCurrent?: boolean
+}
+
+/**
+ * Backward-compatible internal writer. Unlike the v0.0.7 implementation, this
+ * never writes an API key to config.json; the key is stored in the explicit
+ * file credential backend and config.json contains metadata only.
+ */
 export type WriteConfigInput = {
   apiKey: string
   expectedApiKey?: null | string
+  origin?: string
   profile?: string
   recover?: boolean
   setCurrent?: boolean
@@ -51,6 +76,14 @@ export type WriteConfigInput = {
 type StoredConfig = {
   currentProfile: string
   profiles: Record<string, ModellixProfile>
+  schemaVersion: number
+}
+
+export class LegacyCredentialMigrationRequiredError extends Error {
+  constructor() {
+    super('Legacy plaintext credentials must be migrated first. Run modellix-cli auth migrate --to keychain.')
+    this.name = 'LegacyCredentialMigrationRequiredError'
+  }
 }
 
 export function getConfigFilePath(options: ConfigPathOptions = {}): string {
@@ -66,9 +99,7 @@ export function getConfigFilePath(options: ConfigPathOptions = {}): string {
     throw new Error('User home directory must be an absolute path.')
   }
 
-  const configHome = configuredHome || join(userHome, '.config')
-
-  return join(configHome, 'modellix', 'config.json')
+  return join(configuredHome || join(userHome, '.config'), 'modellix', 'config.json')
 }
 
 export function normalizeProfileName(profile?: string): string {
@@ -78,9 +109,7 @@ export function normalizeProfileName(profile?: string): string {
   }
 
   if (!/^[\w.-]+$/u.test(normalized)) {
-    throw new Error(
-      'Invalid profile name. Use only letters, numbers, underscores, dots, and hyphens.',
-    )
+    throw new Error('Invalid profile name. Use only letters, numbers, underscores, dots, and hyphens.')
   }
 
   if (RESERVED_PROFILE_NAMES.has(normalized.toLowerCase())) {
@@ -90,45 +119,50 @@ export function normalizeProfileName(profile?: string): string {
   return normalized
 }
 
-export async function readConfig(
-  options: ConfigPathOptions = {},
-): Promise<ModellixConfig | undefined> {
-  const stored = await readStoredConfig(options)
-  if (!stored) {
-    return
+export function normalizeCredentialOrigin(rawOrigin: string): string {
+  const normalized = normalizeSafeText(rawOrigin, 'Credential origin', 2048)
+  let url: URL
+  try {
+    url = new URL(normalized)
+  } catch {
+    throw new Error('Credential origin must be a valid URL origin.')
   }
 
-  return createCompatibleConfig(stored)
+  const isLocalHttp = url.protocol === 'http:'
+    && (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
+  if (url.protocol !== 'https:' && !isLocalHttp) {
+    throw new Error('Credential origin must use HTTPS (HTTP is allowed only for localhost).')
+  }
+
+  if (url.username || url.password || url.search || url.hash || (url.pathname && url.pathname !== '/')) {
+    throw new Error('Credential origin must not include credentials, a path, query, or fragment.')
+  }
+
+  return url.origin
 }
 
-export async function writeConfig(
-  input: WriteConfigInput,
+export async function readConfig(options: ConfigPathOptions = {}): Promise<ModellixConfig | undefined> {
+  return readStoredConfig(options)
+}
+
+export async function writeProfileMetadata(
+  input: WriteProfileMetadataInput,
   options: ConfigPathOptions = {},
 ): Promise<string> {
-  const apiKey = normalizeApiKey(input.apiKey, 'Cannot save Modellix config: apiKey')
-
+  const profile = normalizeProfileName(input.profile)
+  const origin = normalizeCredentialOrigin(input.origin)
+  const credential = normalizeCredentialMetadata(input.credential)
   const configPath = getConfigFilePath(options)
   return withFileLock(configPath, async () => {
-    let existing: StoredConfig | undefined
+    let existing: ModellixConfig | undefined
     try {
       existing = await readStoredConfig(options)
     } catch (error) {
       if (!input.recover) throw error
     }
 
-    const profile = input.profile
-      ? normalizeProfileName(input.profile)
-      : existing?.currentProfile ?? DEFAULT_PROFILE
-    if (Object.hasOwn(input, 'expectedApiKey')) {
-      const currentApiKey = existing?.profiles[profile]?.apiKey
-      const expectationMatches = input.expectedApiKey === null
-        ? currentApiKey === undefined
-        : currentApiKey === input.expectedApiKey
-      if (!expectationMatches) {
-        throw new Error(
-          `Profile ${profile} changed while the API key was being validated. Review the current profile and retry.`,
-        )
-      }
+    if (existing?.legacyApiKeys && Object.keys(existing.legacyApiKeys).length > 0) {
+      throw new LegacyCredentialMigrationRequiredError()
     }
 
     const profiles = cloneProfiles(existing?.profiles)
@@ -136,13 +170,119 @@ export async function writeConfig(
       throw new Error(`Cannot save Modellix config: at most ${MAX_PROFILE_COUNT} profiles are allowed.`)
     }
 
-    profiles[profile] = {apiKey}
+    const origins = cloneOrigins(profiles[profile]?.origins)
+    origins[origin] = credential
+    profiles[profile] = {origins}
     const currentProfile = input.setCurrent === false
       ? existing?.currentProfile ?? profile
       : profile
-
-    return writeStoredConfig({currentProfile, profiles}, options)
+    return writeStoredConfig({
+      currentProfile,
+      profiles,
+      schemaVersion: CONFIG_SCHEMA_VERSION,
+    }, options)
   })
+}
+
+export async function writeConfig(
+  input: WriteConfigInput,
+  options: ConfigPathOptions = {},
+): Promise<string> {
+  const origin = normalizeCredentialOrigin(
+    input.origin || process.env.MODELLIX_BASE_URL || DEFAULT_API_ORIGIN,
+  )
+  const profile = normalizeProfileName(input.profile)
+  const apiKey = normalizeApiKey(input.apiKey)
+  const {
+    createCredentialReference,
+    deleteStoredCredential,
+    readStoredCredential,
+    writeStoredCredential,
+  } = await import('./credential-store.js')
+  const credentialRef = createCredentialReference(origin, profile)
+  const metadata: CredentialMetadata = {credentialRef, store: 'file'}
+  let config: ModellixConfig | undefined
+  try {
+    config = await readConfig(options)
+  } catch (error) {
+    if (!input.recover) throw error
+  }
+
+  const previousMetadata = config?.profiles[profile]?.origins[origin]
+  const previousApiKey = previousMetadata
+    ? await readStoredCredential(previousMetadata, options)
+    : undefined
+  if (Object.hasOwn(input, 'expectedApiKey')) {
+    const matches = input.expectedApiKey === null
+      ? previousApiKey === undefined
+      : previousApiKey === input.expectedApiKey
+    if (!matches) {
+      throw new Error(`Profile ${profile} changed while the API key was being validated. Review it and retry.`)
+    }
+  }
+
+  await writeStoredCredential('file', credentialRef, apiKey, options)
+  try {
+    const configPath = await writeProfileMetadata({
+      credential: metadata,
+      origin,
+      profile,
+      recover: input.recover,
+      setCurrent: input.setCurrent,
+    }, options)
+    if (previousMetadata && previousMetadata.store !== 'file') {
+      await deleteStoredCredential(previousMetadata, options).catch(() => {})
+    }
+
+    return configPath
+  } catch (error) {
+    const rollbackErrors: unknown[] = []
+    try {
+      await deleteStoredCredential(metadata, options)
+    } catch (rollbackError) {
+      rollbackErrors.push(rollbackError)
+    }
+
+    if (previousApiKey && previousMetadata) {
+      try {
+        await writeStoredCredential(
+          previousMetadata.store,
+          previousMetadata.credentialRef,
+          previousApiKey,
+          options,
+        )
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError)
+      }
+    }
+
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...rollbackErrors],
+        `Unable to write profile ${profile}; restoring its previous credential state also failed.`,
+      )
+    }
+
+    throw error
+  }
+}
+
+export async function replaceWithMetadata(
+  input: {currentProfile: string; profiles: Record<string, ModellixProfile>},
+  options: ConfigPathOptions = {},
+): Promise<string> {
+  const currentProfile = normalizeProfileName(input.currentProfile)
+  const profiles = normalizeProfiles(input.profiles)
+  if (!Object.hasOwn(profiles, currentProfile)) {
+    throw new Error('Cannot write Modellix config: currentProfile does not exist in profiles.')
+  }
+
+  const configPath = getConfigFilePath(options)
+  return withFileLock(configPath, async () => writeStoredConfig({
+    currentProfile,
+    profiles,
+    schemaVersion: CONFIG_SCHEMA_VERSION,
+  }, options))
 }
 
 export async function removeProfile(
@@ -156,24 +296,39 @@ export async function removeProfile(
     if (!stored || !Object.hasOwn(stored.profiles, normalizedProfile)) {
       return {
         currentProfile: stored?.currentProfile,
+        origins: [],
         remainingProfiles: stored ? Object.keys(stored.profiles) : [],
         removed: false,
       }
     }
 
+    const profileValue = stored.profiles[normalizedProfile]
+    const origins = Object.entries(profileValue.origins).map(([origin, metadata]) => ({metadata, origin}))
+    const legacyApiKey = stored.legacyApiKeys?.[normalizedProfile]
     const profiles = cloneProfiles(stored.profiles)
     delete profiles[normalizedProfile]
     const remainingProfiles = Object.keys(profiles)
     if (remainingProfiles.length === 0) {
       await removeConfigUnlocked(options)
-      return {remainingProfiles, removed: true}
+      return {legacyApiKey, origins, remainingProfiles, removed: true}
     }
 
     const currentProfile = stored.currentProfile === normalizedProfile
       ? remainingProfiles[0]
       : stored.currentProfile
-    await writeStoredConfig({currentProfile, profiles}, options)
-    return {currentProfile, remainingProfiles, removed: true}
+    if (stored.legacyApiKeys) {
+      const remainingLegacy = cloneLegacyKeys(stored.legacyApiKeys)
+      delete remainingLegacy[normalizedProfile]
+      await writeLegacyConfig({currentProfile, legacyApiKeys: remainingLegacy}, options)
+    } else {
+      await writeStoredConfig({
+        currentProfile,
+        profiles,
+        schemaVersion: CONFIG_SCHEMA_VERSION,
+      }, options)
+    }
+
+    return {currentProfile, legacyApiKey, origins, remainingProfiles, removed: true}
   })
 }
 
@@ -188,22 +343,15 @@ async function removeConfigUnlocked(options: ConfigPathOptions): Promise<boolean
     await unlink(configPath)
     return true
   } catch (error) {
-    if (isNodeError(error) && error.code === 'ENOENT') {
-      return false
-    }
-
+    if (isNodeError(error) && error.code === 'ENOENT') return false
     throw new Error(`Unable to remove Modellix config at ${configPath}.`, {cause: error})
   }
 }
 
-// Schema migration, size/security validation, and legacy compatibility are centralized here.
-// eslint-disable-next-line complexity
-async function readStoredConfig(
-  options: ConfigPathOptions,
-): Promise<StoredConfig | undefined> {
+
+async function readStoredConfig(options: ConfigPathOptions): Promise<ModellixConfig | undefined> {
   const configPath = getConfigFilePath(options)
   let contents: string
-
   try {
     const configStats = await lstat(configPath)
     if (!configStats.isFile() || configStats.isSymbolicLink()) {
@@ -213,10 +361,7 @@ async function readStoredConfig(
     contents = await readUtf8FileLimited(configPath, MAX_CONFIG_BYTES, 'Modellix config')
     if (process.platform !== 'win32') await chmod(configPath, 0o600)
   } catch (error) {
-    if (isNodeError(error) && error.code === 'ENOENT') {
-      return
-    }
-
+    if (isNodeError(error) && error.code === 'ENOENT') return
     if (error instanceof InputFileSizeLimitError) throw error
     throw new Error(`Unable to read Modellix config at ${configPath}.`, {cause: error})
   }
@@ -228,112 +373,96 @@ async function readStoredConfig(
     throw new Error(`Invalid JSON in Modellix config at ${configPath}.`, {cause: error})
   }
 
-  if (!isRecord(parsed)) {
-    throw invalidConfigError(configPath)
-  }
-
-  if (isRecord(parsed.profiles)) {
-    if (Object.keys(parsed.profiles).length > MAX_PROFILE_COUNT) {
-      throw invalidConfigError(configPath)
-    }
-
-    const profiles = createProfileMap()
-    for (const [rawName, rawProfile] of Object.entries(parsed.profiles)) {
-      const profileName = normalizeProfileName(rawName)
-      if (
-        !isRecord(rawProfile)
-        || typeof rawProfile.apiKey !== 'string'
-        || !rawProfile.apiKey.trim()
-        || rawProfile.apiKey.trim().length > MAX_API_KEY_LENGTH
-      ) {
-        throw invalidConfigError(configPath)
-      }
-
-      let apiKey: string
-      try {
-        apiKey = normalizeApiKey(rawProfile.apiKey, 'Saved Modellix apiKey')
-      } catch {
-        throw invalidConfigError(configPath)
-      }
-
-      profiles[profileName] = {apiKey}
-    }
-
-    const profileNames = Object.keys(profiles)
-    if (profileNames.length === 0) {
-      throw invalidConfigError(configPath)
-    }
-
+  if (!isRecord(parsed)) throw invalidConfigError(configPath)
+  if (parsed.schemaVersion === CONFIG_SCHEMA_VERSION) {
+    const profiles = normalizeProfiles(parsed.profiles)
     const currentProfile = typeof parsed.currentProfile === 'string'
       ? normalizeProfileName(parsed.currentProfile)
       : DEFAULT_PROFILE
     if (!Object.hasOwn(profiles, currentProfile)) {
-      throw new Error(
-        `Invalid Modellix config at ${configPath}: currentProfile does not exist in profiles.`,
-      )
+      throw new Error(`Invalid Modellix config at ${configPath}: currentProfile does not exist in profiles.`)
     }
 
-    return {currentProfile, profiles}
+    return {currentProfile, profiles, schemaVersion: CONFIG_SCHEMA_VERSION}
   }
 
-  // Backward compatibility with the original `{apiKey}` file format.
-  if (
-    typeof parsed.apiKey === 'string'
-    && parsed.apiKey.trim()
-    && parsed.apiKey.trim().length <= MAX_API_KEY_LENGTH
-  ) {
-    const profiles = createProfileMap()
-    let apiKey: string
-    try {
-      apiKey = normalizeApiKey(parsed.apiKey, 'Saved Modellix apiKey')
-    } catch {
-      throw invalidConfigError(configPath)
-    }
-
-    profiles[DEFAULT_PROFILE] = {apiKey}
-    return {currentProfile: DEFAULT_PROFILE, profiles}
-  }
-
-  throw invalidConfigError(configPath)
+  return parseLegacyConfig(parsed, configPath)
 }
 
-async function writeStoredConfig(
-  config: StoredConfig,
+function parseLegacyConfig(parsed: Record<string, unknown>, configPath: string): ModellixConfig {
+  const legacyApiKeys = createLegacyMap()
+  if (isRecord(parsed.profiles)) {
+    if (Object.keys(parsed.profiles).length > MAX_PROFILE_COUNT) throw invalidConfigError(configPath)
+    for (const [rawName, rawProfile] of Object.entries(parsed.profiles)) {
+      if (!isRecord(rawProfile) || typeof rawProfile.apiKey !== 'string') throw invalidConfigError(configPath)
+      const profileName = normalizeProfileName(rawName)
+      legacyApiKeys[profileName] = normalizeApiKey(rawProfile.apiKey, 'Saved Modellix apiKey')
+    }
+  } else if (typeof parsed.apiKey === 'string') {
+    legacyApiKeys[DEFAULT_PROFILE] = normalizeApiKey(parsed.apiKey, 'Saved Modellix apiKey')
+  } else {
+    throw invalidConfigError(configPath)
+  }
+
+  const profileNames = Object.keys(legacyApiKeys)
+  if (profileNames.length === 0) throw invalidConfigError(configPath)
+  const currentProfile = typeof parsed.currentProfile === 'string'
+    ? normalizeProfileName(parsed.currentProfile)
+    : profileNames[0]
+  if (!Object.hasOwn(legacyApiKeys, currentProfile)) {
+    throw new Error(`Invalid Modellix config at ${configPath}: currentProfile does not exist in profiles.`)
+  }
+
+  const profiles = createProfileMap()
+  for (const profile of profileNames) profiles[profile] = {origins: createOriginMap()}
+  const config = {currentProfile, profiles, schemaVersion: 1} as ModellixConfig
+  Object.defineProperty(config, 'legacyApiKeys', {enumerable: false, value: legacyApiKeys})
+  return config
+}
+
+async function writeLegacyConfig(
+  input: {currentProfile: string; legacyApiKeys: Record<string, string>},
   options: ConfigPathOptions,
 ): Promise<string> {
+  const serializableProfiles = Object.fromEntries(
+    Object.entries(input.legacyApiKeys).map(([profile, apiKey]) => [profile, {apiKey}]),
+  )
+  return writePayload({currentProfile: input.currentProfile, profiles: serializableProfiles}, options)
+}
+
+async function writeStoredConfig(config: StoredConfig, options: ConfigPathOptions): Promise<string> {
+  const serializableProfiles = Object.fromEntries(
+    Object.entries(config.profiles).map(([profile, value]) => [profile, {
+      origins: Object.fromEntries(Object.entries(value.origins)),
+    }]),
+  )
+  return writePayload({
+    currentProfile: config.currentProfile,
+    profiles: serializableProfiles,
+    schemaVersion: CONFIG_SCHEMA_VERSION,
+  }, options)
+}
+
+async function writePayload(payloadValue: unknown, options: ConfigPathOptions): Promise<string> {
   const configPath = getConfigFilePath(options)
   const configDirectory = dirname(configPath)
-  const serializableProfiles = Object.fromEntries(
-    Object.entries(config.profiles).map(([profile, value]) => [profile, {apiKey: value.apiKey}]),
-  )
-  const temporaryPath = join(
-    configDirectory,
-    `.config.${process.pid}.${randomUUID()}.tmp`,
-  )
-  const payload = `${JSON.stringify({currentProfile: config.currentProfile, profiles: serializableProfiles}, null, 2)}\n`
+  const temporaryPath = join(configDirectory, `.config.${process.pid}.${randomUUID()}.tmp`)
+  const payload = `${JSON.stringify(payloadValue, null, 2)}\n`
   if (Buffer.byteLength(payload) > MAX_CONFIG_BYTES) {
     throw new Error(`Modellix config exceeds the ${MAX_CONFIG_BYTES}-byte limit.`)
   }
 
   let temporaryHandle: Awaited<ReturnType<typeof open>> | undefined
-
   try {
     await mkdir(configDirectory, {mode: 0o700, recursive: true})
-
-    if (process.platform !== 'win32') {
-      await chmod(configDirectory, 0o700)
-    }
-
+    if (process.platform !== 'win32') await chmod(configDirectory, 0o700)
     temporaryHandle = await open(temporaryPath, 'wx', 0o600)
     await temporaryHandle.writeFile(payload, 'utf8')
     await temporaryHandle.sync()
     await temporaryHandle.close()
     temporaryHandle = undefined
     await rename(temporaryPath, configPath)
-
-    if (process.platform !== 'win32') {
-      await chmod(configPath, 0o600)
-    }
+    if (process.platform !== 'win32') await chmod(configPath, 0o600)
   } catch (error) {
     await temporaryHandle?.close().catch(() => {})
     await unlink(temporaryPath).catch(() => {})
@@ -343,14 +472,64 @@ async function writeStoredConfig(
   return configPath
 }
 
-function cloneProfiles(
-  profiles?: Record<string, ModellixProfile>,
-): Record<string, ModellixProfile> {
-  const cloned = createProfileMap()
-  for (const [profile, value] of Object.entries(profiles ?? {})) {
-    cloned[profile] = {apiKey: value.apiKey}
+function normalizeProfiles(value: unknown): Record<string, ModellixProfile> {
+  if (!isRecord(value) || Object.keys(value).length === 0 || Object.keys(value).length > MAX_PROFILE_COUNT) {
+    throw new Error('Invalid Modellix config: expected a non-empty profiles map.')
   }
 
+  const profiles = createProfileMap()
+  for (const [rawProfile, rawValue] of Object.entries(value)) {
+    const profile = normalizeProfileName(rawProfile)
+    if (!isRecord(rawValue) || !isRecord(rawValue.origins)) {
+      throw new Error('Invalid Modellix config: expected profile origins metadata.')
+    }
+
+    const origins = createOriginMap()
+    for (const [rawOrigin, rawMetadata] of Object.entries(rawValue.origins)) {
+      const origin = normalizeCredentialOrigin(rawOrigin)
+      if (!isRecord(rawMetadata)) throw new Error('Invalid Modellix credential metadata.')
+      origins[origin] = normalizeCredentialMetadata(rawMetadata)
+    }
+
+    profiles[profile] = {origins}
+  }
+
+  return profiles
+}
+
+function normalizeCredentialMetadata(value: unknown): CredentialMetadata {
+  if (!isRecord(value) || (value.store !== 'keychain' && value.store !== 'file')) {
+    throw new Error('Invalid Modellix credential metadata store.')
+  }
+
+  if (typeof value.credentialRef !== 'string') {
+    throw new TypeError('Invalid Modellix credential metadata reference.')
+  }
+
+  return {
+    credentialRef: normalizeSafeText(value.credentialRef, 'Credential reference', 512),
+    store: value.store,
+  }
+}
+
+function cloneProfiles(profiles?: Record<string, ModellixProfile>): Record<string, ModellixProfile> {
+  const cloned = createProfileMap()
+  for (const [profile, value] of Object.entries(profiles ?? {})) {
+    cloned[profile] = {origins: cloneOrigins(value.origins)}
+  }
+
+  return cloned
+}
+
+function cloneOrigins(origins?: Record<string, CredentialMetadata>): Record<string, CredentialMetadata> {
+  const cloned = createOriginMap()
+  for (const [origin, value] of Object.entries(origins ?? {})) cloned[origin] = {...value}
+  return cloned
+}
+
+function cloneLegacyKeys(keys: Record<string, string>): Record<string, string> {
+  const cloned = createLegacyMap()
+  for (const [profile, value] of Object.entries(keys)) cloned[profile] = value
   return cloned
 }
 
@@ -358,19 +537,16 @@ function createProfileMap(): Record<string, ModellixProfile> {
   return Object.create(null) as Record<string, ModellixProfile>
 }
 
-function createCompatibleConfig(stored: StoredConfig): ModellixConfig {
-  const result = {apiKey: stored.profiles[stored.currentProfile].apiKey} as ModellixConfig
-  Object.defineProperties(result, {
-    currentProfile: {enumerable: false, value: stored.currentProfile},
-    profiles: {enumerable: false, value: cloneProfiles(stored.profiles)},
-  })
-  return result
+function createOriginMap(): Record<string, CredentialMetadata> {
+  return Object.create(null) as Record<string, CredentialMetadata>
+}
+
+function createLegacyMap(): Record<string, string> {
+  return Object.create(null) as Record<string, string>
 }
 
 function invalidConfigError(configPath: string): Error {
-  return new Error(
-    `Invalid Modellix config at ${configPath}: expected a non-empty apiKey or profiles map.`,
-  )
+  return new Error(`Invalid Modellix config at ${configPath}: expected schemaVersion 2 metadata or a legacy API-key profile.`)
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

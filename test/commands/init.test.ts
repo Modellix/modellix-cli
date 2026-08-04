@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 
 import {__setInitPrompterForTest} from '../../src/commands/init.js'
-import {MODELLIX_API_KEY_ENV} from '../../src/lib/auth.js'
+import {findApiKey, MODELLIX_API_KEY_ENV} from '../../src/lib/auth.js'
 import {readConfig, writeConfig} from '../../src/lib/config.js'
 import {__setHttpRequesterForTest} from '../../src/lib/modellix-client.js'
 
@@ -49,6 +49,8 @@ describe('init', () => {
       '--api-key',
       'valid-init-test-key',
       '--yes',
+      '--store',
+      'file',
       '--json',
     ])
     const report = parseJson(stdout)
@@ -58,7 +60,8 @@ describe('init', () => {
     expect(report).to.include({apiKeySource: 'flag', ok: true, saved: true, valid: true})
     expect(report).to.include({docs: 'https://docs.modellix.ai/ways-to-use/cli'})
     expect(JSON.stringify(report.nextSteps)).to.contain('modellix-cli task get <task_id>')
-    expect(await readConfig()).to.deep.equal({apiKey: 'valid-init-test-key'})
+    expect(await readSavedKey()).to.equal('valid-init-test-key')
+    expect(JSON.stringify(await readConfig())).not.to.contain('valid-init-test-key')
     expect(requestCount).to.equal(1)
     expect(stdout).not.to.contain('valid-init-test-key')
   })
@@ -71,6 +74,8 @@ describe('init', () => {
       '--api-key',
       'invalid-init-test-key',
       '--yes',
+      '--store',
+      'file',
       '--json',
     ])
     const report = parseJson(stdout)
@@ -114,7 +119,7 @@ describe('init', () => {
 
     expect(getExitCode(error)).to.equal(1)
     expect(JSON.stringify(report)).to.contain('--force')
-    expect(await readConfig()).to.deep.equal({apiKey: 'existing-config-test-key'})
+    expect(await readSavedKey()).to.equal('existing-config-test-key')
     expect(requestCount).to.equal(0)
   })
 
@@ -164,11 +169,11 @@ describe('init', () => {
     })
     mockValidation(true)
 
-    const {error, stderr, stdout} = await runCommand(['init', '--force'])
+    const {error, stderr, stdout} = await runCommand(['init', '--force', '--store', 'file'])
 
     expect(error).to.equal(undefined)
     expect(stdout).to.contain('Docs: https://docs.modellix.ai/ways-to-use/cli')
-    expect(await readConfig()).to.deep.equal({apiKey: 'rotated-config-test-key'})
+    expect(await readSavedKey()).to.equal('rotated-config-test-key')
     expect(`${stdout}${stderr}`).not.to.contain('rotated-config-test-key')
     expect(requestCount).to.equal(1)
   })
@@ -184,11 +189,17 @@ describe('init', () => {
     })
     mockValidation(true)
 
-    const {error, stderr, stdout} = await runCommand(['init', '--force', '--check'])
+    const {error, stderr, stdout} = await runCommand([
+      'init',
+      '--force',
+      '--check',
+      '--store',
+      'file',
+    ])
 
     expect(error).to.equal(undefined)
     expect(stdout).to.contain('Configuration was not changed.')
-    expect(await readConfig()).to.deep.equal({apiKey: 'existing-check-config-key'})
+    expect(await readSavedKey()).to.equal('existing-check-config-key')
     expect(`${stdout}${stderr}`).not.to.contain('check-only-replacement-key')
   })
 
@@ -197,11 +208,11 @@ describe('init', () => {
     process.env[MODELLIX_API_KEY_ENV] = 'replacement-environment-key'
     mockValidation(true)
 
-    const {error, stdout} = await runCommand(['init', '--force', '--json'])
+    const {error, stdout} = await runCommand(['init', '--force', '--store', 'file', '--json'])
 
     expect(error).to.equal(undefined)
     expect(parseJson(stdout)).to.include({apiKeySource: 'environment', saved: true})
-    expect(await readConfig()).to.deep.equal({apiKey: 'replacement-environment-key'})
+    expect(await readSavedKey()).to.equal('replacement-environment-key')
     expect(stdout).not.to.contain('replacement-environment-key')
   })
 
@@ -215,6 +226,8 @@ describe('init', () => {
       '--api-key',
       'work-init-test-key',
       '--yes',
+      '--store',
+      'file',
       '--json',
     ])
     const report = parseJson(stdout)
@@ -223,7 +236,7 @@ describe('init', () => {
     expect(error).to.equal(undefined)
     expect(report).to.include({ok: true, profile: 'work', saved: true})
     expect(config?.currentProfile).to.equal('work')
-    expect(config?.profiles.work.apiKey).to.equal('work-init-test-key')
+    expect(await readSavedKey('work')).to.equal('work-init-test-key')
     expect(stdout).not.to.contain('work-init-test-key')
   })
 
@@ -239,7 +252,12 @@ describe('init', () => {
       }
     })
   }
+
 })
+
+async function readSavedKey(profile = 'default'): Promise<string | undefined> {
+  return (await findApiKey({ignoreEnvironment: true, profile}))?.apiKey
+}
 
 function getExitCode(error: Error | undefined): number | undefined {
   return (error as (Error & {oclif?: {exit?: number}}) | undefined)?.oclif?.exit

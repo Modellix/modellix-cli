@@ -35,10 +35,12 @@ modellix-cli --help
 
 | Area | Capability | Commands and behavior |
 | --- | --- | --- |
-| Setup | Secure key setup | `init` and `auth login` hide interactive input, validate the key before saving, and support non-interactive JSON output. |
-| Authentication | Named profiles | `auth login/status/whoami/logout`; select with `--profile` or `MODELLIX_PROFILE`. Concurrent writes are locked, replacements use conflict detection, and the legacy single-key schema remains readable. |
+| Setup | Secure key setup | `init` and `auth login` hide interactive input, validate the key before saving, and use the operating-system credential store by default. `--store file` is an explicit plaintext fallback. |
+| Authentication | Named profiles and origins | `auth login/status/whoami/logout`; select with `--profile` or `MODELLIX_PROFILE`. Credentials are isolated by profile and API origin, concurrent writes are locked, and replacements use conflict detection. |
+| Authentication | Migration and launcher import | `auth migrate` removes legacy plaintext keys from `config.json`; `auth import-env` lets an installer or MCP launcher validate a supplied environment key, persist it, and then remove it from the child environment. |
 | Diagnostics | Environment and account checks | `doctor` verifies Node.js, key resolution, API connectivity, key validity, and balance without printing the key. |
 | Configuration | Local inspection and cleanup | `config path/show/clear`; status output never reveals stored credentials, and cleanup can target one profile. |
+| Files | Model reference files | `file upload/delete` implements the Modellix File API for PNG, JPEG, and WebP references. Uploads are bounded to 16 MiB, use stable JSON output, and ambiguous uploads are never retried automatically. |
 | Discovery | Search and filter models | `model list --search --type --provider --limit`; output as human text, JSON, quiet slugs, or the compatible `slugs` format. |
 | Discovery | Model details | `model describe <provider/model>` reads the existing model catalog and prints human, JSON, or quiet output. |
 | Execution | Single model task | `model run` accepts an inline JSON object, a JSON file, or stdin; validates finite values, depth, and size before POST; default submission remains asynchronous and `--wait` can return the terminal result. |
@@ -89,7 +91,7 @@ It then resolves the API key in this independent order:
 
 1. `--api-key`
 2. `MODELLIX_API_KEY`
-3. the selected saved profile
+3. the selected saved profile and API origin
 
 Recommended setup:
 
@@ -99,22 +101,36 @@ modellix-cli auth login --profile work
 modellix-cli auth status --profile work
 ```
 
-`modellix-cli init` remains the short setup command and supports the same global Profile selection. Interactive prompts hide the key, and the CLI validates it before writing. New configuration uses this schema:
+`modellix-cli init` remains the short setup command and supports the same global profile selection. Interactive prompts hide the key, and the CLI validates it before writing. By default, the secret is saved in Windows Credential Manager, macOS Keychain, or the Linux Secret Service through the native keyring backend. `config.json` stores only routing metadata:
 
 ```json
 {
+  "schemaVersion": 2,
   "currentProfile": "default",
   "profiles": {
     "default": {
-      "apiKey": "<redacted>"
+      "origins": {
+        "https://api.modellix.ai": {
+          "store": "keychain",
+          "credentialRef": "v1-<opaque-reference>"
+        }
+      }
     }
   }
 }
 ```
 
-The previous `{ "apiKey": "..." }` schema is still accepted and is upgraded on the next successful write. Profile names accept letters, numbers, underscores, dots, and hyphens; reserved JavaScript property names are rejected.
+The previous `{ "apiKey": "..." }` and plaintext profile schemas remain readable for compatibility but are not silently rewritten. Migrate them explicitly:
 
-On POSIX systems, the CLI creates the configuration directory and file with owner-only permissions. Windows file protection follows the permissions of the current user's home directory.
+```sh
+modellix-cli auth migrate --to keychain
+```
+
+If the native credential service is unavailable, the CLI fails closed and explains the opt-in fallback. `--store file` writes the secret to a separate `credentials.json` with owner-only permissions where the platform supports POSIX modes; the secret is still never placed in `config.json`.
+
+Profile names accept letters, numbers, underscores, dots, and hyphens; reserved JavaScript property names are rejected. A profile can hold independent credentials for production, QA, or another explicitly selected API origin.
+
+On POSIX systems, the CLI creates configuration and explicit fallback files with owner-only permissions. On Windows, the default keychain mode uses Windows Credential Manager under the current user.
 
 For temporary or CI usage, set the environment variable instead:
 
@@ -128,12 +144,22 @@ export MODELLIX_API_KEY="your_api_key"
 $env:MODELLIX_API_KEY = "your_api_key"
 ```
 
-Passing a key on the command line can leave it in shell history, so prefer the hidden prompt or environment variable. `auth status`, `auth whoami`, `config show`, and all JSON status output omit the credential value.
+Passing a key on the command line can leave it in shell history, so prefer the hidden prompt, `--api-key-stdin`, or a short-lived environment variable. `auth status`, `auth whoami`, `config show`, and all JSON status output omit the credential value.
+
+For plugin or MCP installers that already received a user-supplied key, import it once and then remove the variable from the launched child process:
+
+```sh
+modellix-cli auth import-env --env-var MODELLIX_API_KEY --profile automation
+modellix-cli auth status --profile automation --ignore-env --json
+```
 
 Authentication commands:
 
 ```sh
 modellix-cli auth login [--profile NAME]
+modellix-cli auth login --api-key-stdin [--profile NAME]
+modellix-cli auth import-env --env-var NAME [--profile NAME]
+modellix-cli auth migrate --to keychain
 modellix-cli auth status [--profile NAME] [--json]
 modellix-cli auth whoami [--profile NAME] [--json]
 modellix-cli auth logout [--profile NAME] [--yes]
@@ -161,6 +187,24 @@ modellix-cli init --api-key "$MODELLIX_API_KEY" --check
 ```
 
 Use `--force` to recover or replace an unreadable configuration; `--yes` only accepts an ordinary replacement confirmation. Add `--profile NAME` for a named profile and `--json` for a stable machine-readable result. Successful human and JSON output include copyable model/task next steps and the CLI documentation URL. In a non-interactive terminal, `init` fails immediately when no key is already available instead of waiting for input.
+
+## Upload model reference files
+
+Upload a PNG, JPEG, or WebP image before using it as a model reference:
+
+```sh
+modellix-cli file upload ./reference.png --json
+```
+
+The JSON result includes `file.fileId`, `file.url`, the detected type, size, filename, and creation time. The file must be a regular non-symbolic-link file no larger than 16 MiB. File content, rather than only its extension, is checked before upload.
+
+Delete the temporary reference after its model task no longer needs it:
+
+```sh
+modellix-cli file delete <file_id> --json
+```
+
+The upload endpoint allows limited storage and concurrency, so integrations should preserve original reference order, upload at most two files concurrently, and clean up only files they created. A network or protocol failure after upload starts is reported as outcome-unknown; check the Modellix console before submitting the same file again.
 
 ## Diagnose the environment
 
@@ -466,7 +510,7 @@ $ npm install -g modellix-cli
 $ modellix-cli COMMAND
 running command...
 $ modellix-cli (--version)
-modellix-cli/0.0.7
+modellix-cli/0.0.8
 $ modellix-cli --help [COMMAND]
 USAGE
   $ modellix-cli COMMAND
@@ -477,8 +521,10 @@ USAGE
 ## Command reference
 
 <!-- commands -->
+* [`modellix-cli auth import-env`](#modellix-cli-auth-import-env)
 * [`modellix-cli auth login`](#modellix-cli-auth-login)
 * [`modellix-cli auth logout`](#modellix-cli-auth-logout)
+* [`modellix-cli auth migrate`](#modellix-cli-auth-migrate)
 * [`modellix-cli auth status`](#modellix-cli-auth-status)
 * [`modellix-cli auth whoami`](#modellix-cli-auth-whoami)
 * [`modellix-cli autocomplete [SHELL]`](#modellix-cli-autocomplete-shell)
@@ -486,6 +532,8 @@ USAGE
 * [`modellix-cli config path`](#modellix-cli-config-path)
 * [`modellix-cli config show`](#modellix-cli-config-show)
 * [`modellix-cli doctor`](#modellix-cli-doctor)
+* [`modellix-cli file delete FILEID`](#modellix-cli-file-delete-fileid)
+* [`modellix-cli file upload PATH`](#modellix-cli-file-upload-path)
 * [`modellix-cli help [COMMAND]`](#modellix-cli-help-command)
 * [`modellix-cli init`](#modellix-cli-init)
 * [`modellix-cli model batch FILE`](#modellix-cli-model-batch-file)
@@ -498,6 +546,44 @@ USAGE
 * [`modellix-cli task history`](#modellix-cli-task-history)
 * [`modellix-cli task wait TASKIDS`](#modellix-cli-task-wait-taskids)
 
+## `modellix-cli auth import-env`
+
+Validate an API key from an environment variable and import it into persistent storage
+
+```
+USAGE
+  $ modellix-cli auth import-env [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
+    human|json|quiet] [--profile <value>] [-q] [-v] [--env-var <value>] [--force] [--store keychain|file]
+
+FLAGS
+  --env-var=<value>  [default: MODELLIX_API_KEY] Environment variable containing the API key
+  --force            Replace a different saved credential for the profile
+  --json             Print one machine-readable JSON result
+  --profile=<value>  Configuration profile (overrides MODELLIX_PROFILE and the current profile)
+  --store=<option>   [default: keychain] Persistent credential store (file is an explicit plaintext fallback)
+                     <options: keychain|file>
+
+GLOBAL FLAGS
+  -q, --quiet             Print only the primary value
+  -v, --verbose           Print additional non-sensitive details to stderr
+      --base-url=<value>  [env: MODELLIX_BASE_URL] Modellix API origin (HTTPS, or HTTP for localhost)
+      --debug             Print sanitized HTTP diagnostics to stderr
+      --no-color          Disable terminal colors
+      --no-progress       Disable progress messages
+      --output=<option>   Output format
+                          <options: human|json|quiet>
+
+DESCRIPTION
+  Validate an API key from an environment variable and import it into persistent storage
+
+EXAMPLES
+  $ modellix-cli auth import-env --env-var MODELLIX_API_KEY --json
+
+  $ modellix-cli auth import-env --env-var CURSOR_MODELLIX_API_KEY --profile cursor --json
+```
+
+_See code: [src/commands/auth/import-env.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/auth/import-env.ts)_
+
 ## `modellix-cli auth login`
 
 Validate and save a Modellix API key for a profile
@@ -505,15 +591,19 @@ Validate and save a Modellix API key for a profile
 ```
 USAGE
   $ modellix-cli auth login [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
-    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>] [--check] [--force] [-y]
+    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key-stdin | --api-key <value>] [--check] [--force] [--store
+    keychain|file] [-y]
 
 FLAGS
   -y, --yes              Accept profile replacement prompts
       --api-key=<value>  Modellix API key (overrides environment and saved configuration)
+      --api-key-stdin    Read the API key from stdin so it does not appear in process arguments
       --check            Validate the key without writing configuration
       --force            Replace the selected saved profile
       --json             Print one machine-readable JSON result
       --profile=<value>  Configuration profile (overrides MODELLIX_PROFILE and the current profile)
+      --store=<option>   [default: keychain] Persistent credential store (file is an explicit plaintext fallback)
+                         <options: keychain|file>
 
 GLOBAL FLAGS
   -q, --quiet             Print only the primary value
@@ -531,7 +621,9 @@ DESCRIPTION
 EXAMPLES
   $ modellix-cli auth login
 
-  $ modellix-cli auth login --profile work --api-key <key> --yes
+  printf %s "$MODELLIX_API_KEY" | modellix-cli auth login --api-key-stdin --yes
+
+  $ modellix-cli auth login --profile work --store file --yes
 
   $ modellix-cli auth login --api-key <key> --check --json
 ```
@@ -573,6 +665,45 @@ EXAMPLES
 
 _See code: [src/commands/auth/logout.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/auth/logout.ts)_
 
+## `modellix-cli auth migrate`
+
+Migrate legacy plaintext API-key profiles to a safer credential store
+
+```
+USAGE
+  $ modellix-cli auth migrate [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
+    human|json|quiet] [--profile <value>] [-q] [-v] [--to keychain|file] [-y]
+
+FLAGS
+  -y, --yes          Confirm migration without prompting
+      --json         Print one machine-readable JSON result
+      --to=<option>  [default: keychain] Migration target (file is an explicit plaintext fallback)
+                     <options: keychain|file>
+
+GLOBAL FLAGS
+  -q, --quiet             Print only the primary value
+  -v, --verbose           Print additional non-sensitive details to stderr
+      --base-url=<value>  [env: MODELLIX_BASE_URL] Modellix API origin (HTTPS, or HTTP for localhost)
+      --debug             Print sanitized HTTP diagnostics to stderr
+      --no-color          Disable terminal colors
+      --no-progress       Disable progress messages
+      --output=<option>   Output format
+                          <options: human|json|quiet>
+      --profile=<value>   Authentication profile to use (defaults to MODELLIX_PROFILE)
+
+DESCRIPTION
+  Migrate legacy plaintext API-key profiles to a safer credential store
+
+EXAMPLES
+  $ modellix-cli auth migrate --to keychain
+
+  $ modellix-cli auth migrate --to keychain --yes --json
+
+  $ modellix-cli auth migrate --to file --yes --json
+```
+
+_See code: [src/commands/auth/migrate.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/auth/migrate.ts)_
+
 ## `modellix-cli auth status`
 
 Show and verify the active Modellix authentication without revealing the key
@@ -580,10 +711,11 @@ Show and verify the active Modellix authentication without revealing the key
 ```
 USAGE
   $ modellix-cli auth status [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
-    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>]
+    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>] [--ignore-env]
 
 FLAGS
   --api-key=<value>  Modellix API key (overrides environment and saved configuration)
+  --ignore-env       Ignore MODELLIX_API_KEY and inspect persistent credentials only
   --json             Print one machine-readable JSON result
   --profile=<value>  Configuration profile (overrides MODELLIX_PROFILE and the current profile)
 
@@ -605,6 +737,8 @@ EXAMPLES
 
   $ modellix-cli auth status --profile work --json
 
+  $ modellix-cli auth status --ignore-env --json
+
   $ modellix-cli auth status --api-key <key>
 ```
 
@@ -617,10 +751,11 @@ Show and verify the active Modellix authentication without revealing the key
 ```
 USAGE
   $ modellix-cli auth whoami [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
-    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>]
+    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>] [--ignore-env]
 
 FLAGS
   --api-key=<value>  Modellix API key (overrides environment and saved configuration)
+  --ignore-env       Ignore MODELLIX_API_KEY and inspect persistent credentials only
   --json             Print one machine-readable JSON result
   --profile=<value>  Configuration profile (overrides MODELLIX_PROFILE and the current profile)
 
@@ -641,6 +776,8 @@ EXAMPLES
   $ modellix-cli auth whoami
 
   $ modellix-cli auth whoami --profile work --json
+
+  $ modellix-cli auth whoami --ignore-env --json
 
   $ modellix-cli auth whoami --api-key <key>
 ```
@@ -818,6 +955,82 @@ EXAMPLES
 
 _See code: [src/commands/doctor.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/doctor.ts)_
 
+## `modellix-cli file delete FILEID`
+
+Delete a Modellix reference file
+
+```
+USAGE
+  $ modellix-cli file delete FILEID [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress]
+    [--output human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>]
+
+ARGUMENTS
+  FILEID  Modellix file ID returned by file upload
+
+FLAGS
+  --api-key=<value>  Modellix API key (overrides environment and saved configuration)
+  --json             Print one stable machine-readable JSON result
+
+GLOBAL FLAGS
+  -q, --quiet             Print only the primary value
+  -v, --verbose           Print additional non-sensitive details to stderr
+      --base-url=<value>  [env: MODELLIX_BASE_URL] Modellix API origin (HTTPS, or HTTP for localhost)
+      --debug             Print sanitized HTTP diagnostics to stderr
+      --no-color          Disable terminal colors
+      --no-progress       Disable progress messages
+      --output=<option>   Output format
+                          <options: human|json|quiet>
+      --profile=<value>   Authentication profile to use (defaults to MODELLIX_PROFILE)
+
+DESCRIPTION
+  Delete a Modellix reference file
+
+EXAMPLES
+  $ modellix-cli file delete file-abc123
+
+  $ modellix-cli file delete file-abc123 --json
+```
+
+_See code: [src/commands/file/delete.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/file/delete.ts)_
+
+## `modellix-cli file upload PATH`
+
+Upload a local image for use as a Modellix model reference
+
+```
+USAGE
+  $ modellix-cli file upload PATH [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
+    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>]
+
+ARGUMENTS
+  PATH  PNG, JPEG, or WebP file to upload
+
+FLAGS
+  -q, --quiet            Print only the uploaded file URL
+      --api-key=<value>  Modellix API key (overrides environment and saved configuration)
+      --json             Print one stable machine-readable JSON result
+
+GLOBAL FLAGS
+  -v, --verbose           Print additional non-sensitive details to stderr
+      --base-url=<value>  [env: MODELLIX_BASE_URL] Modellix API origin (HTTPS, or HTTP for localhost)
+      --debug             Print sanitized HTTP diagnostics to stderr
+      --no-color          Disable terminal colors
+      --no-progress       Disable progress messages
+      --output=<option>   Output format
+                          <options: human|json|quiet>
+      --profile=<value>   Authentication profile to use (defaults to MODELLIX_PROFILE)
+
+DESCRIPTION
+  Upload a local image for use as a Modellix model reference
+
+EXAMPLES
+  $ modellix-cli file upload ./reference.png --json
+
+  $ modellix-cli file upload ./reference.webp --quiet
+```
+
+_See code: [src/commands/file/upload.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/file/upload.ts)_
+
 ## `modellix-cli help [COMMAND]`
 
 Display help for modellix-cli.
@@ -845,7 +1058,7 @@ Configure and validate a Modellix API key
 ```
 USAGE
   $ modellix-cli init [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
-    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>] [--check] [--force] [-y]
+    human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>] [--check] [--force] [--store keychain|file] [-y]
 
 FLAGS
   -y, --yes              Accept configuration replacement prompts
@@ -853,6 +1066,9 @@ FLAGS
       --check            Validate the key without writing configuration
       --force            Replace an existing saved API key
       --json             Print one machine-readable JSON result
+      --profile=<value>  Configuration profile (overrides MODELLIX_PROFILE and the current profile)
+      --store=<option>   [default: keychain] Persistent credential store (file is an explicit plaintext fallback)
+                         <options: keychain|file>
 
 GLOBAL FLAGS
   -q, --quiet             Print only the primary value
@@ -863,7 +1079,6 @@ GLOBAL FLAGS
       --no-progress       Disable progress messages
       --output=<option>   Output format
                           <options: human|json|quiet>
-      --profile=<value>   Authentication profile to use (defaults to MODELLIX_PROFILE)
 
 DESCRIPTION
   Configure and validate a Modellix API key
@@ -984,7 +1199,7 @@ FLAGS
       --body-file=<value>       Path to a JSON file used as request body
       --interval=<value>        [default: 2s] Polling interval when --wait is enabled (for example 5s or 1m)
       --max-body-bytes=<value>  [default: 67108864] Maximum JSON request body size in bytes
-      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-5.0-pro
+      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-4.5-t2i
       --output=<option>         [default: json] Output format
                                 <options: human|json|quiet|task-id>
       --timeout=<value>         [default: 5m] Maximum time to wait (for example 30s, 5m, or 1h)
@@ -1006,7 +1221,7 @@ ALIASES
   $ modellix-cli model invoke
 
 EXAMPLES
-  $ modellix-cli model invoke --model-slug bytedance/seedream-5.0-pro --body '{"prompt":"A cute cat"}'
+  $ modellix-cli model invoke --model-slug bytedance/seedream-4.5-t2i --body '{"prompt":"A cute cat"}'
 
   $ modellix-cli model invoke --model-slug alibaba/qwen-image-edit --body-file ./payload.json --api-key <key>
 
@@ -1076,7 +1291,7 @@ FLAGS
       --body-file=<value>       Path to a JSON file used as request body
       --interval=<value>        [default: 2s] Polling interval when --wait is enabled (for example 5s or 1m)
       --max-body-bytes=<value>  [default: 67108864] Maximum JSON request body size in bytes
-      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-5.0-pro
+      --model-slug=<value>      (required) Model slug in provider/model format, for example bytedance/seedream-4.5-t2i
       --output=<option>         [default: json] Output format
                                 <options: human|json|quiet|task-id>
       --timeout=<value>         [default: 5m] Maximum time to wait (for example 30s, 5m, or 1h)
@@ -1098,7 +1313,7 @@ ALIASES
   $ modellix-cli model invoke
 
 EXAMPLES
-  $ modellix-cli model run --model-slug bytedance/seedream-5.0-pro --body '{"prompt":"A cute cat"}'
+  $ modellix-cli model run --model-slug bytedance/seedream-4.5-t2i --body '{"prompt":"A cute cat"}'
 
   $ modellix-cli model run --model-slug alibaba/qwen-image-edit --body-file ./payload.json --api-key <key>
 
@@ -1240,12 +1455,12 @@ Wait until one or more Modellix tasks reach terminal states
 
 ```
 USAGE
-  $ modellix-cli task wait TASKIDS [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress]
+  $ modellix-cli task wait TASKIDS... [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress]
     [--output human|json|quiet] [--profile <value>] [-q] [-v] [--api-key <value>] [--concurrency <value>] [--interval
     <value>] [--timeout <value>]
 
 ARGUMENTS
-  TASKIDS  One or more task IDs returned by model run
+  TASKIDS...  One or more task IDs returned by model run
 
 FLAGS
   --api-key=<value>      Modellix API key (overrides environment and saved configuration)
@@ -1277,6 +1492,10 @@ EXAMPLES
 _See code: [src/commands/task/wait.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/task/wait.ts)_
 <!-- commandsstop -->
 
+## Open source and security
+
+`modellix-cli` is released under the [MIT License](LICENSE). Contributions and reproducible bug reports are welcome through [GitHub Issues](https://github.com/Modellix/modellix-cli/issues). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md); never paste a real API key, signed result URL, or private request payload into an issue.
+
 ## Related links
 
 - [Modellix documentation](https://docs.modellix.ai/get-started)
@@ -1284,3 +1503,6 @@ _See code: [src/commands/task/wait.ts](https://github.com/Modellix/modellix-cli/
 - [Modellix Agent Skill](https://docs.modellix.ai/ways-to-use/skill)
 - [List Models API](https://docs.modellix.ai/api/list-models)
 - [Validate API Key API](https://docs.modellix.ai/api/validate-api-key)
+- [File API guide](https://docs.modellix.ai/file-api/how-to-use)
+- [Upload Media File API](https://docs.modellix.ai/api/upload-media-file)
+- [Delete Media File API](https://docs.modellix.ai/api/delete-media-file)

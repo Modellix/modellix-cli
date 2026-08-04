@@ -4,16 +4,19 @@ import {Flags} from '@oclif/core'
 import {BaseCommand, resolveOutputMode} from '../base-command.js'
 import {
   type ApiKeySource,
+  credentialStoreFlag,
   findApiKey,
   MODELLIX_PROFILE_ENV,
+  profileFlag,
   resolveProfile,
+  saveApiKey,
 } from '../lib/auth.js'
 import {
+  type CredentialStoreKind,
   DEFAULT_PROFILE,
   getConfigFilePath,
   normalizeProfileName,
   readConfig,
-  writeConfig,
 } from '../lib/config.js'
 import {MODELLIX_API_KEY_URL, MODELLIX_CLI_DOCS_URL} from '../lib/links.js'
 import {validateApiKey} from '../lib/modellix-client.js'
@@ -26,6 +29,7 @@ type InitFlags = {
   force: boolean
   json: boolean
   profile?: string
+  store: string
   yes: boolean
 }
 
@@ -37,6 +41,7 @@ type InitPrompter = {
 type InitResult = {
   apiKeySource: InitKeySource
   configPath: string
+  credentialStore?: CredentialStoreKind
   docs: string
   nextSteps: string[]
   ok: true
@@ -68,6 +73,8 @@ export default class Init extends BaseCommand {
     check: Flags.boolean({description: 'Validate the key without writing configuration'}),
     force: Flags.boolean({description: 'Replace an existing saved API key'}),
     json: Flags.boolean({description: 'Print one machine-readable JSON result'}),
+    profile: profileFlag,
+    store: credentialStoreFlag,
     yes: Flags.boolean({char: 'y', description: 'Accept configuration replacement prompts'}),
   }
 
@@ -111,8 +118,8 @@ export default class Init extends BaseCommand {
       !flags.json && process.stdin.isTTY === true && process.stdout.isTTY === true
     const profile = await selectInitProfile(flags)
     const {apiKey, apiKeySource, shouldSave} = await selectApiKey(flags, interactive, profile)
-    const savedConfig = await loadSavedConfig(flags, shouldSave)
-    const savedApiKey = savedConfig?.profiles[profile]?.apiKey
+    const savedCredential = await loadSavedCredential(flags, shouldSave, profile)
+    const savedApiKey = savedCredential?.apiKey
     await confirmReplacement({apiKey, flags, interactive, savedApiKey, shouldSave})
 
     const valid = await validateApiKey({apiKey})
@@ -122,12 +129,21 @@ export default class Init extends BaseCommand {
 
     let saved = false
     const configPath = getConfigFilePath()
-    if (shouldSave && (savedApiKey !== apiKey || savedConfig?.currentProfile !== profile)) {
-      await writeConfig({
+    const currentProfile = (await readConfig().catch(() => {}))?.currentProfile
+    if (
+      shouldSave
+      && (
+        savedApiKey !== apiKey
+        || savedCredential?.source !== flags.store
+        || currentProfile !== profile
+      )
+    ) {
+      await saveApiKey({
         apiKey,
         expectedApiKey: savedApiKey ?? null,
         profile,
         recover: flags.force,
+        store: flags.store as CredentialStoreKind,
       })
       saved = true
     }
@@ -135,6 +151,7 @@ export default class Init extends BaseCommand {
     return {
       apiKeySource,
       configPath,
+      ...(saved ? {credentialStore: flags.store as CredentialStoreKind} : {}),
       docs: MODELLIX_CLI_DOCS_URL,
       nextSteps: [
         'modellix-cli doctor',
@@ -175,16 +192,17 @@ async function confirmReplacement(options: {
   }
 }
 
-async function loadSavedConfig(
+async function loadSavedCredential(
   flags: InitFlags,
   shouldSave: boolean,
-): ReturnType<typeof readConfig> {
+  profile: string,
+): Promise<Awaited<ReturnType<typeof findApiKey>>> {
   if (!shouldSave) {
     return
   }
 
   try {
-    return await readConfig()
+    return await findApiKey({ignoreEnvironment: true, profile})
   } catch (error) {
     if (!flags.force) {
       throw new Error(`${errorMessage(error)} Pass --force to replace it.`)
@@ -204,7 +222,7 @@ async function selectApiKey(
 
   const resolved = await findApiKey({profile})
   if (resolved) {
-    if (resolved.source === 'config' && flags.force) {
+    if (['file', 'keychain', 'legacy-file'].includes(resolved.source) && flags.force) {
       if (!interactive) {
         throw new Error('Pass --api-key with --force in a non-interactive session.')
       }
@@ -219,7 +237,7 @@ async function selectApiKey(
     return {
       apiKey: resolved.apiKey,
       apiKeySource: resolved.source,
-      shouldSave: !flags.check && resolved.source !== 'config',
+      shouldSave: !flags.check && !['file', 'keychain', 'legacy-file'].includes(resolved.source),
     }
   }
 

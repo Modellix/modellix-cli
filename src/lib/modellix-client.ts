@@ -1,5 +1,6 @@
 import type {IncomingHttpHeaders} from 'node:http'
 
+import {randomBytes} from 'node:crypto'
 import {request as requestHttp} from 'node:http'
 import {request} from 'node:https'
 import {setTimeout as delay} from 'node:timers/promises'
@@ -27,8 +28,9 @@ export type JsonValue = boolean | JsonValue[] | null | number | string | {[key: 
 type HttpRequestOptions = {
   apiKey: string
   baseUrl: string
-  body?: string
-  method: 'GET' | 'POST'
+  body?: Buffer | string
+  contentType?: string
+  method: 'DELETE' | 'GET' | 'POST'
   path: string
   timeoutMs: number
 }
@@ -42,8 +44,11 @@ type HttpResponse = {
 type RequestOptions = {
   apiKey: string
   body?: JsonValue
-  method: 'GET' | 'POST'
+  contentType?: string
+  method: 'DELETE' | 'GET' | 'POST'
   path: string
+  rawBody?: Buffer
+  submissionKind?: 'media' | 'model'
   timeoutMs?: number
 }
 
@@ -63,6 +68,17 @@ export class PaidSubmissionOutcomeUnknownError extends Error {
       `${reason} The paid submission outcome is unknown. Do not submit the same request again until you verify whether a task was created.`,
     )
     this.name = 'PaidSubmissionOutcomeUnknownError'
+  }
+}
+
+export class MediaUploadOutcomeUnknownError extends Error {
+  readonly safeToRetry = false
+
+  constructor(reason: string) {
+    super(
+      `${reason} The upload outcome is unknown. Check the Modellix file console before uploading the same file again.`,
+    )
+    this.name = 'MediaUploadOutcomeUnknownError'
   }
 }
 
@@ -209,11 +225,78 @@ export async function getTeamBalance(input: ApiKeyInput): Promise<number> {
   return data.balance
 }
 
+export type MediaFileRecord = {
+  createdAt: string
+  fileId: string
+  filename: string
+  size: number
+  type: string
+  url: string
+}
+
+export async function uploadMediaFile(input: ApiKeyInput & {
+  bytes: Buffer
+  filename: string
+  mimeType: string
+}): Promise<MediaFileRecord> {
+  if (input.bytes.length === 0 || input.bytes.length > 16 * 1024 * 1024) {
+    throw new Error('Media file must contain between 1 byte and 16 MiB.')
+  }
+
+  const filename = normalizeSafeText(input.filename, 'Media filename', 255)
+  if (/["\\]/u.test(filename)) {
+    throw new Error('Media filename contains unsupported header characters.')
+  }
+
+  const mimeType = normalizeSafeText(input.mimeType, 'Media MIME type', 128)
+  if (!/^image\/(?:jpeg|png|webp)$/u.test(mimeType)) {
+    throw new Error('Unsupported media MIME type. Use PNG, JPEG, or WebP.')
+  }
+
+  const boundary = `modellix-cli-${randomBytes(18).toString('hex')}`
+  const encodedFilename = encodeURIComponent(filename)
+  const prefix = Buffer.from(
+    `--${boundary}\r\n`
+      + `Content-Disposition: form-data; name="file"; filename="${filename}"; filename*=UTF-8''${encodedFilename}\r\n`
+      + `Content-Type: ${mimeType}\r\n\r\n`,
+    'utf8',
+  )
+  const suffix = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8')
+  const payload = Buffer.concat([prefix, input.bytes, suffix])
+  const response = await requestJson({
+    apiKey: input.apiKey,
+    contentType: `multipart/form-data; boundary=${boundary}`,
+    method: 'POST',
+    path: '/api/v1/media/files',
+    rawBody: payload,
+    submissionKind: 'media',
+  })
+  return parseMediaFileRecord(response)
+}
+
+export async function deleteMediaFile(input: ApiKeyInput & {fileId: string}): Promise<string> {
+  const fileId = normalizeSafeText(input.fileId, 'Modellix file ID', 512)
+  if (!/^[A-Za-z0-9._~:+@=-]+$/u.test(fileId)) {
+    throw new Error('Modellix file ID contains unsupported characters.')
+  }
+
+  await requestJson({
+    apiKey: input.apiKey,
+    method: 'DELETE',
+    path: `/api/v1/media/files/${encodeURIComponent(fileId)}`,
+  })
+  return fileId
+}
+
 // Retry, deadline, and paid-submission safety branches are intentionally centralized here.
 // eslint-disable-next-line complexity
 async function requestJson(options: RequestOptions): Promise<JsonValue> {
   const apiKey = normalizeApiKey(options.apiKey)
-  let body: string | undefined
+  if (options.body !== undefined && options.rawBody !== undefined) {
+    throw new Error('A Modellix request cannot contain both JSON and raw bodies.')
+  }
+
+  let body: Buffer | string | undefined = options.rawBody
   if (options.body !== undefined) {
     assertJsonValue(options.body, 'Model request body')
     body = JSON.stringify(options.body)
@@ -247,6 +330,7 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
         apiKey,
         baseUrl,
         body,
+        contentType: options.contentType,
         method: options.method,
         path: options.path,
         timeoutMs: remainingMs,
@@ -254,8 +338,9 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
     } catch (error) {
       if (error instanceof ApiResponseSizeLimitError) {
         if (options.method === 'POST') {
-          throw new PaidSubmissionOutcomeUnknownError(
-            'The paid submission response exceeded the safe response-size limit.',
+          throw submissionOutcomeUnknown(
+            options.submissionKind,
+            'The submission response exceeded the safe response-size limit.',
           )
         }
 
@@ -286,8 +371,13 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
     const data = tryParseResponseJson(response.bodyText)
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (data === undefined) {
+        if (options.method === 'DELETE' && response.bodyText.trim() === '') {
+          return null
+        }
+
         if (options.method === 'POST') {
-          throw new PaidSubmissionOutcomeUnknownError(
+          throw submissionOutcomeUnknown(
+            options.submissionKind,
             'Modellix returned a successful HTTP response that was not valid JSON.',
           )
         }
@@ -309,13 +399,14 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
     }
 
     if (options.method === 'POST' && !isDefinitelyRejectedSubmission(response.statusCode)) {
-      throw new PaidSubmissionOutcomeUnknownError(
+      throw submissionOutcomeUnknown(
+        options.submissionKind,
         `Modellix returned HTTP ${response.statusCode} after the request was sent.`,
       )
     }
 
     const apiErrorMessage = redactSecret(
-      buildApiErrorMessage(response, data ?? null, options.method),
+      buildApiErrorMessage(response, data ?? null, options.method, options.submissionKind),
       apiKey,
     )
     if (options.method === 'GET' && isRetryableStatus(response.statusCode)) {
@@ -329,8 +420,9 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
     ? ` ${redactSecret(lastNetworkError.message, apiKey)}`
     : ''
   if (options.method === 'POST') {
-    throw new PaidSubmissionOutcomeUnknownError(
-      'The connection failed after the model submission started.',
+    throw submissionOutcomeUnknown(
+      options.submissionKind,
+      'The connection failed after the submission started.',
     )
   }
 
@@ -345,7 +437,7 @@ async function performHttpRequest(options: HttpRequestOptions): Promise<HttpResp
     }
 
     if (options.body !== undefined) {
-      headers['Content-Type'] = 'application/json'
+      headers['Content-Type'] = options.contentType ?? 'application/json'
       headers['Content-Length'] = String(Buffer.byteLength(options.body))
     }
 
@@ -517,6 +609,72 @@ function isRecord(value: unknown): value is Record<string, JsonValue> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function parseMediaFileRecord(payload: JsonValue): MediaFileRecord {
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : undefined
+  if (
+    typeof data?.file_id !== 'string'
+    || typeof data.type !== 'string'
+    || typeof data.url !== 'string'
+    || typeof data.filename !== 'string'
+    || typeof data.size !== 'number'
+    || !Number.isSafeInteger(data.size)
+    || data.size < 0
+  ) {
+    throw new MediaUploadOutcomeUnknownError(
+      'Modellix returned a successful upload response without valid file metadata.',
+    )
+  }
+
+  const createdAt = normalizeMediaCreatedAt(data.created_at)
+
+  let url: URL
+  try {
+    url = new URL(data.url)
+  } catch {
+    throw new MediaUploadOutcomeUnknownError(
+      'Modellix returned a successful upload response with an invalid file URL.',
+    )
+  }
+
+  const isLocalHttp = url.protocol === 'http:'
+    && (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
+  if (url.protocol !== 'https:' && !isLocalHttp) {
+    throw new MediaUploadOutcomeUnknownError(
+      'Modellix returned a successful upload response with an unsupported file URL.',
+    )
+  }
+
+  if (!/^[A-Za-z0-9._~:+@=-]+$/u.test(data.file_id)) {
+    throw new MediaUploadOutcomeUnknownError(
+      'Modellix returned a successful upload response with an invalid file ID.',
+    )
+  }
+
+  return {
+    createdAt,
+    fileId: normalizeSafeText(data.file_id, 'Modellix file ID', 512),
+    filename: normalizeSafeText(data.filename, 'Media filename', 512),
+    size: data.size,
+    type: normalizeSafeText(data.type, 'Media type', 128),
+    url: url.toString(),
+  }
+}
+
+function normalizeMediaCreatedAt(value: JsonValue | undefined): string {
+  if (typeof value === 'string') {
+    return normalizeSafeText(value, 'Media creation time', 128)
+  }
+
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    const date = new Date(value)
+    if (!Number.isNaN(date.getTime())) return date.toISOString()
+  }
+
+  throw new MediaUploadOutcomeUnknownError(
+    'Modellix returned a successful upload response with an invalid creation time.',
+  )
+}
+
 function extractMessage(payload: JsonValue): string | undefined {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return
@@ -529,7 +687,8 @@ function extractMessage(payload: JsonValue): string | undefined {
 function buildApiErrorMessage(
   response: HttpResponse,
   payload: JsonValue,
-  method: 'GET' | 'POST',
+  method: 'DELETE' | 'GET' | 'POST',
+  submissionKind?: 'media' | 'model',
 ): string {
   const {statusCode} = response
   const extractedMessage = method === 'GET' ? sanitizeApiMessage(extractMessage(payload)) : undefined
@@ -559,7 +718,11 @@ function buildApiErrorMessage(
       const resetHint = resetAt ? ` Retry after X-RateLimit-Reset=${resetAt}.` : ''
       const retryHint = method === 'GET'
         ? ' Automatic read retries were exhausted.'
-        : ' The CLI did not retry this paid submission; verify account activity before trying later.'
+        : method === 'DELETE'
+          ? ' The CLI did not retry this delete request; try again after the rate limit resets.'
+          : submissionKind === 'media'
+            ? ' The CLI did not retry this upload; check existing files before trying later.'
+            : ' The CLI did not retry this paid submission; verify account activity before trying later.'
       return `Modellix API error (429 Too Many Requests).${detail}${retryHint}${resetHint}`
     }
 
@@ -575,6 +738,15 @@ function buildApiErrorMessage(
       return `Modellix API error (${statusCode}).${detail} Inspect the request parameters and account state.`
     }
   }
+}
+
+function submissionOutcomeUnknown(
+  kind: 'media' | 'model' | undefined,
+  reason: string,
+): MediaUploadOutcomeUnknownError | PaidSubmissionOutcomeUnknownError {
+  return kind === 'media'
+    ? new MediaUploadOutcomeUnknownError(reason)
+    : new PaidSubmissionOutcomeUnknownError(reason)
 }
 
 function sanitizeApiMessage(message: string | undefined): string | undefined {

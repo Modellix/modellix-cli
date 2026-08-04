@@ -45,9 +45,12 @@ export default class TaskWait extends BaseCommand {
       description: 'Overall timeout in seconds or duration format (for example 30s, 5m, or 2h)',
     }),
   }
+  static strict = false
 
   async run(): Promise<void> {
-    const {args, flags} = await this.parse(TaskWait)
+    const {args, argv, flags} = await this.parse(TaskWait)
+    const parsedTaskIds = Array.isArray(args.taskIds) ? args.taskIds : [args.taskIds]
+    const taskIds = [...parsedTaskIds, ...argv]
     const authentication = await resolveApiKeyDetails({
       apiKey: flags['api-key'],
       profile: flags.profile,
@@ -64,7 +67,7 @@ export default class TaskWait extends BaseCommand {
         apiKey,
         concurrency: flags.concurrency,
         intervalMs,
-        taskIds: args.taskIds,
+        taskIds,
         timeoutMs,
       })
     } catch (error) {

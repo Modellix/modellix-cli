@@ -5,16 +5,21 @@ import {
   __setHttpRequesterForTest,
   __setRetryDelayForTest,
   ApiResponseSizeLimitError,
+  deleteMediaFile,
   getTaskResult,
   getTeamBalance,
   invokeModelAsync,
   listModels,
+  MediaUploadOutcomeUnknownError,
   PaidSubmissionOutcomeUnknownError,
   runModel,
+  uploadMediaFile,
   validateApiKey,
 } from '../../src/lib/modellix-client.js'
 
 const docsUrlProperty = 'docs_url'
+const createdAtProperty = 'created_at'
+const fileIdProperty = 'file_id'
 const isValidProperty = 'is_valid'
 const taskIdProperty = 'task_id'
 
@@ -22,7 +27,7 @@ describe('modellix client', () => {
   let originalBaseUrl: string | undefined
   let originalDebug: string | undefined
   let receivedApiKey = ''
-  let receivedBody: string | undefined
+  let receivedBody: Buffer | string | undefined
   let receivedMethod = ''
   let receivedPath = ''
 
@@ -106,6 +111,98 @@ describe('modellix client', () => {
     expect(await getTeamBalance({apiKey: 'balance-test-key'})).to.equal(12.3456)
     expect(receivedMethod).to.equal('GET')
     expect(receivedPath).to.equal('/api/v1/team/balance')
+  })
+
+  it('uploads a media file with the documented multipart field and normalizes metadata', async () => {
+    let receivedContentType = ''
+    __setHttpRequesterForTest(async (options) => {
+      recordRequest(options)
+      receivedContentType = options.contentType ?? ''
+      return {
+        bodyText: JSON.stringify({
+          data: {
+            [createdAtProperty]: '2026-08-03T00:00:00Z',
+            [fileIdProperty]: 'file-test-123',
+            filename: 'reference.png',
+            size: 8,
+            type: 'image/png',
+            url: 'https://cdn.modellix.ai/file-test-123.png',
+          },
+        }),
+        headers: {},
+        statusCode: 200,
+      }
+    })
+
+    const file = await uploadMediaFile({
+      apiKey: 'upload-test-key',
+      bytes: Buffer.from('png-data'),
+      filename: 'reference.png',
+      mimeType: 'image/png',
+    })
+
+    expect(file).to.deep.equal({
+      createdAt: '2026-08-03T00:00:00Z',
+      fileId: 'file-test-123',
+      filename: 'reference.png',
+      size: 8,
+      type: 'image/png',
+      url: 'https://cdn.modellix.ai/file-test-123.png',
+    })
+    expect(receivedMethod).to.equal('POST')
+    expect(receivedPath).to.equal('/api/v1/media/files')
+    expect(receivedContentType).to.match(/^multipart\/form-data; boundary=/u)
+    expect(Buffer.isBuffer(receivedBody)).to.equal(true)
+    expect((receivedBody as Buffer).toString('utf8')).to.contain('name="file"')
+  })
+
+  it('marks a malformed successful upload response as outcome unknown', async () => {
+    setJsonResponse({data: {}})
+    const error = await captureError(() => uploadMediaFile({
+      apiKey: 'upload-test-key',
+      bytes: Buffer.from('png-data'),
+      filename: 'reference.png',
+      mimeType: 'image/png',
+    }))
+
+    expect(error).to.be.instanceOf(MediaUploadOutcomeUnknownError)
+    expect(error.message).to.match(/file console|outcome is unknown/i)
+  })
+
+  it('accepts the production File API millisecond creation timestamp', async () => {
+    setJsonResponse({
+      data: {
+        [createdAtProperty]: 1_785_738_420_819,
+        [fileIdProperty]: 'file-production-shape',
+        filename: 'reference.png',
+        size: 8,
+        type: 'image/png',
+        url: 'https://cdn.modellix.ai/file-production-shape.png',
+      },
+    })
+
+    const file = await uploadMediaFile({
+      apiKey: 'upload-test-key',
+      bytes: Buffer.from('png-data'),
+      filename: 'reference.png',
+      mimeType: 'image/png',
+    })
+
+    expect(file.createdAt).to.equal('2026-08-03T06:27:00.819Z')
+  })
+
+  it('accepts an empty successful media deletion response and returns the normalized ID', async () => {
+    __setHttpRequesterForTest(async (options) => {
+      recordRequest(options)
+      return {bodyText: '', headers: {}, statusCode: 204}
+    })
+    expect(await deleteMediaFile({
+      apiKey: 'delete-test-key',
+      fileId: '  file-test-123  ',
+    })).to.equal('file-test-123')
+    expect(receivedMethod).to.equal('DELETE')
+    expect(receivedPath).to.equal('/api/v1/media/files/file-test-123')
+    expect(receivedBody).to.equal(undefined)
   })
 
   it('runs a model without the removed async path suffix', async () => {
@@ -320,7 +417,8 @@ describe('modellix client', () => {
 
   function recordRequest(options: {
     apiKey: string
-    body?: string
+    body?: Buffer | string
+    contentType?: string
     method: string
     path: string
   }): void {

@@ -2,8 +2,8 @@ import {confirm} from '@inquirer/prompts'
 import {Flags} from '@oclif/core'
 
 import {BaseCommand, resolveOutputMode} from '../../base-command.js'
-import {findApiKey, profileFlag, resolveProfile} from '../../lib/auth.js'
-import {getConfigFilePath, removeProfile} from '../../lib/config.js'
+import {findApiKey, profileFlag, removeSavedProfile, resolveProfile} from '../../lib/auth.js'
+import {getConfigFilePath} from '../../lib/config.js'
 
 export default class AuthLogout extends BaseCommand {
   static description = 'Remove a saved Modellix authentication profile'
@@ -23,7 +23,7 @@ export default class AuthLogout extends BaseCommand {
     try {
       const selection = await resolveProfile(flags.profile)
       await confirmLogout({...flags, json: outputMode === 'json'}, selection.profile)
-      const removal = await removeProfile(selection.profile)
+      const removal = await removeSavedProfile(selection.profile)
       const active = await findApiKey({profile: flags.profile})
       const result = {
         activeApiKeySource: active?.source ?? 'missing',

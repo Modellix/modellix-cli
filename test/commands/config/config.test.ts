@@ -4,6 +4,7 @@ import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {dirname, join} from 'node:path'
 
+import {findApiKey} from '../../../src/lib/auth.js'
 import {getConfigFilePath, readConfig, writeConfig} from '../../../src/lib/config.js'
 
 describe('config commands', () => {
@@ -48,7 +49,7 @@ describe('config commands', () => {
 
     expect(error).to.equal(undefined)
     expect(JSON.parse(stdout)).to.deep.include({
-      apiKeySource: 'config',
+      apiKeySource: 'file',
       configured: true,
       ok: true,
       profile: 'default',
@@ -95,7 +96,9 @@ describe('config commands', () => {
 
     expect(getExitCode(error)).to.equal(1)
     expect(JSON.parse(stdout)).to.deep.include({ok: false})
-    expect(await readConfig()).to.deep.equal({apiKey: 'saved-preserve-test-key'})
+    expect(await findApiKey({ignoreEnvironment: true})).to.deep.include({
+      apiKey: 'saved-preserve-test-key',
+    })
   })
 
   it('shows and clears only the selected profile', async () => {
@@ -126,8 +129,9 @@ describe('config commands', () => {
       profiles: ['work'],
       removed: true,
     })
-    expect((await readConfig())?.profiles).to.deep.equal({
-      work: {apiKey: 'work-profile-secret'},
+    expect(Object.keys((await readConfig())?.profiles ?? {})).to.deep.equal(['work'])
+    expect(await findApiKey({ignoreEnvironment: true, profile: 'work'})).to.deep.include({
+      apiKey: 'work-profile-secret',
     })
     expect(`${shown.stdout}${shown.stderr}${cleared.stdout}${cleared.stderr}`).not.to.match(
       /default-profile-secret|work-profile-secret/,

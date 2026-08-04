@@ -1,7 +1,7 @@
 {
   "name": "modellix-cli",
   "description": "Official CLI for Modellix model services.",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "author": "Modellix",
   "bin": {
     "modellix-cli": "bin/run.js"
@@ -9,7 +9,8 @@
   "bugs": "https://github.com/Modellix/modellix-cli/issues",
   "dependencies": {
     "@inquirer/prompts": "^7.10.1",
-    "@oclif/core": "^4",
+    "@napi-rs/keyring": "1.3.0",
+    "@oclif/core": "4.8.0",
     "@oclif/plugin-autocomplete": "^3.2.53",
     "@oclif/plugin-help": "^6",
     "@oclif/plugin-warn-if-update-available": "^3.1.68",
@@ -40,7 +41,8 @@
     "./bin/run.js",
     "./bin/runtime.js",
     "./dist",
-    "./oclif.manifest.json"
+    "./oclif.manifest.json",
+    "./SECURITY.md"
   ],
   "homepage": "https://github.com/Modellix/modellix-cli",
   "keywords": [
@@ -85,6 +87,9 @@
       "config": {
         "description": "Inspect and clear local CLI configuration"
       },
+      "file": {
+        "description": "Upload and delete model reference files"
+      },
       "model": {
         "description": "Discover and run Modellix models"
       },
@@ -118,6 +123,7 @@
     "prepack": "npm run build && oclif manifest && oclif readme && node scripts/normalize-readme.mjs",
     "prepublishOnly": "npm run typecheck && npm test",
     "pretest": "shx rm -rf dist oclif.manifest.json tsconfig.tsbuildinfo",
+    "smoke:package": "node scripts/smoke-package.mjs",
     "test": "mocha --forbid-only \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit --pretty false",
     "version": "oclif readme && node scripts/normalize-readme.mjs && git add README.md"

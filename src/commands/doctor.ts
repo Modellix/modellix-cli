@@ -153,14 +153,18 @@ function isSupportedNodeVersion(version: string): boolean {
 function buildReport(
   apiKeySource: 'missing' | ApiKeySource,
   checks: DoctorCheck[],
-  profileSelection: {profile: string; profileSource?: ProfileSource; source?: ProfileSource},
+  profileSelection:
+    | {profile: string; profileSource: ProfileSource}
+    | {profile: string; source: ProfileSource},
 ): DoctorReport {
   return {
     apiKeySource,
     checks,
     ok: checks.filter((check) => check.required).every((check) => check.ok),
     profile: profileSelection.profile,
-    profileSource: profileSelection.profileSource ?? profileSelection.source ?? 'default',
+    profileSource: 'profileSource' in profileSelection
+      ? profileSelection.profileSource
+      : profileSelection.source,
   }
 }
 

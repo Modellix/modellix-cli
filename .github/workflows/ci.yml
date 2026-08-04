@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 22.22.0
+          - os: windows-latest
+            node: 22.22.0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run smoke:package
+      - run: git diff --exit-code
+
+  node18-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - run: npm ci
+      - run: mkdir .package-smoke && npm pack --pack-destination .package-smoke
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 18.20.8
+      - run: npm install --global ./.package-smoke/modellix-cli-*.tgz --ignore-scripts --no-audit --no-fund
+        env:
+          NPM_CONFIG_ENGINE_STRICT: 'true'
+      - run: modellix-cli --version
+      - run: modellix-cli --help

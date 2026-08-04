@@ -3,6 +3,7 @@ import {Flags} from '@oclif/core'
 import {BaseCommand, resolveOutputMode} from '../../base-command.js'
 import {
   apiKeyFlag,
+  type ApiKeySource,
   findApiKey,
   MODELLIX_PROFILE_ENV,
   profileFlag,
@@ -11,11 +12,14 @@ import {DEFAULT_PROFILE, getConfigFilePath, normalizeProfileName} from '../../li
 import {getTeamBalance, validateApiKey} from '../../lib/modellix-client.js'
 
 type AuthStatusResult = {
-  apiKeySource: 'config' | 'environment' | 'flag' | 'missing'
+  apiKeySource: 'missing' | ApiKeySource
   authenticated: boolean
   balance?: number
   configPath: string
+  credentialStore?: 'file' | 'keychain'
+  migrationRequired?: boolean
   ok: boolean
+  origin?: string
   profile: string
   profileSource: 'config' | 'default' | 'environment' | 'flag'
   valid: boolean
@@ -27,17 +31,19 @@ export default class AuthStatus extends BaseCommand {
   static examples = [
     '<%= config.bin %> <%= command.id %>',
     '<%= config.bin %> <%= command.id %> --profile work --json',
+    '<%= config.bin %> <%= command.id %> --ignore-env --json',
     '<%= config.bin %> <%= command.id %> --api-key <key>',
   ]
   static flags = {
     'api-key': apiKeyFlag,
+    'ignore-env': Flags.boolean({description: 'Ignore MODELLIX_API_KEY and inspect persistent credentials only'}),
     json: Flags.boolean({description: 'Print one machine-readable JSON result'}),
     profile: profileFlag,
   }
 
   async run(): Promise<void> {
     const {flags} = await this.parse(AuthStatus)
-    const result = await getStatus(flags['api-key'], flags.profile)
+    const result = await getStatus(flags['api-key'], flags.profile, flags['ignore-env'])
     const outputMode = resolveOutputMode(flags)
 
     if (outputMode === 'json') {
@@ -47,6 +53,8 @@ export default class AuthStatus extends BaseCommand {
     } else {
       this.log(`Profile: ${result.profile} (${result.profileSource})`)
       this.log(`API key source: ${result.apiKeySource}`)
+      if (result.origin) this.log(`API origin: ${result.origin}`)
+      if (result.migrationRequired) this.log('Migration required: run modellix-cli auth migrate --to keychain')
       this.log(`Validation: ${result.valid ? 'valid' : 'not authenticated'}`)
       if (result.balance !== undefined) {
         this.log(`Team balance: $${result.balance.toFixed(4)} USD`)
@@ -63,12 +71,16 @@ export default class AuthStatus extends BaseCommand {
   }
 }
 
-async function getStatus(flagApiKey?: string, flagProfile?: string): Promise<AuthStatusResult> {
+async function getStatus(
+  flagApiKey?: string,
+  flagProfile?: string,
+  ignoreEnvironment = false,
+): Promise<AuthStatusResult> {
   const configPath = getConfigFilePath()
   const fallback = getFallbackProfile(flagProfile)
   let resolved: Awaited<ReturnType<typeof findApiKey>>
   try {
-    resolved = await findApiKey({apiKey: flagApiKey, profile: flagProfile})
+    resolved = await findApiKey({apiKey: flagApiKey, ignoreEnvironment, profile: flagProfile})
   } catch (error) {
     return {
       apiKeySource: 'missing',
@@ -101,7 +113,12 @@ async function getStatus(flagApiKey?: string, flagProfile?: string): Promise<Aut
         apiKeySource: resolved.source,
         authenticated: true,
         configPath,
+        ...(resolved.source === 'file' || resolved.source === 'keychain'
+          ? {credentialStore: resolved.source}
+          : {}),
+        migrationRequired: resolved.source === 'legacy-file',
         ok: false,
+        origin: resolved.origin,
         profile: resolved.profile,
         profileSource: resolved.profileSource,
         valid: false,
@@ -115,7 +132,12 @@ async function getStatus(flagApiKey?: string, flagProfile?: string): Promise<Aut
         authenticated: true,
         balance,
         configPath,
+        ...(resolved.source === 'file' || resolved.source === 'keychain'
+          ? {credentialStore: resolved.source}
+          : {}),
+        migrationRequired: resolved.source === 'legacy-file',
         ok: true,
+        origin: resolved.origin,
         profile: resolved.profile,
         profileSource: resolved.profileSource,
         valid: true,
@@ -125,7 +147,12 @@ async function getStatus(flagApiKey?: string, flagProfile?: string): Promise<Aut
         apiKeySource: resolved.source,
         authenticated: true,
         configPath,
+        ...(resolved.source === 'file' || resolved.source === 'keychain'
+          ? {credentialStore: resolved.source}
+          : {}),
+        migrationRequired: resolved.source === 'legacy-file',
         ok: true,
+        origin: resolved.origin,
         profile: resolved.profile,
         profileSource: resolved.profileSource,
         valid: true,
@@ -137,7 +164,12 @@ async function getStatus(flagApiKey?: string, flagProfile?: string): Promise<Aut
       apiKeySource: resolved.source,
       authenticated: true,
       configPath,
+      ...(resolved.source === 'file' || resolved.source === 'keychain'
+        ? {credentialStore: resolved.source}
+        : {}),
+      migrationRequired: resolved.source === 'legacy-file',
       ok: false,
+      origin: resolved.origin,
       profile: resolved.profile,
       profileSource: resolved.profileSource,
       valid: false,

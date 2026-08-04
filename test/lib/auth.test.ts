@@ -39,7 +39,7 @@ describe('API key resolution', () => {
     process.env[MODELLIX_API_KEY_ENV] = 'environment-test-key'
     await writeConfig({apiKey: 'config-test-key'})
 
-    expect(await findApiKey('  flag-test-key  ')).to.deep.equal({
+    expect(await findApiKey('  flag-test-key  ')).to.deep.include({
       apiKey: 'flag-test-key',
       profile: 'default',
       profileSource: 'config',
@@ -51,7 +51,7 @@ describe('API key resolution', () => {
     process.env[MODELLIX_API_KEY_ENV] = '  environment-test-key  '
     await writeConfig({apiKey: 'config-test-key'})
 
-    expect(await findApiKey()).to.deep.equal({
+    expect(await findApiKey()).to.deep.include({
       apiKey: 'environment-test-key',
       profile: 'default',
       profileSource: 'config',
@@ -62,11 +62,11 @@ describe('API key resolution', () => {
   it('uses the isolated XDG config as the final fallback', async () => {
     await writeConfig({apiKey: 'config-test-key'})
 
-    expect(await findApiKey()).to.deep.equal({
+    expect(await findApiKey()).to.deep.include({
       apiKey: 'config-test-key',
       profile: 'default',
       profileSource: 'config',
-      source: 'config',
+      source: 'file',
     })
   })
 

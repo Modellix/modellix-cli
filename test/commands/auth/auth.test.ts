@@ -1,11 +1,11 @@
 import {runCommand} from '@oclif/test'
 import {expect} from 'chai'
-import {mkdtemp, rm} from 'node:fs/promises'
+import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
-import {join} from 'node:path'
+import {dirname, join} from 'node:path'
 
-import {MODELLIX_API_KEY_ENV, MODELLIX_PROFILE_ENV} from '../../../src/lib/auth.js'
-import {readConfig, writeConfig} from '../../../src/lib/config.js'
+import {findApiKey, MODELLIX_API_KEY_ENV, MODELLIX_PROFILE_ENV} from '../../../src/lib/auth.js'
+import {getConfigFilePath, readConfig, writeConfig} from '../../../src/lib/config.js'
 import {__setHttpRequesterForTest} from '../../../src/lib/modellix-client.js'
 
 const isValidProperty = 'is_valid'
@@ -32,6 +32,7 @@ describe('auth commands', () => {
     restoreEnvironmentVariable(MODELLIX_API_KEY_ENV, originalApiKey)
     restoreEnvironmentVariable(MODELLIX_PROFILE_ENV, originalProfile)
     restoreEnvironmentVariable('XDG_CONFIG_HOME', originalXdgConfigHome)
+    delete process.env.MODELLIX_IMPORT_TEST_KEY
     await rm(temporaryXdgDirectory, {force: true, recursive: true})
   })
 
@@ -44,6 +45,8 @@ describe('auth commands', () => {
       '--api-key',
       'auth-login-secret-key',
       '--yes',
+      '--store',
+      'file',
       '--json',
     ])
 
@@ -57,7 +60,11 @@ describe('auth commands', () => {
     })
     const config = await readConfig()
     expect(config?.currentProfile).to.equal('work')
-    expect(config?.profiles.work.apiKey).to.equal('auth-login-secret-key')
+    expect(await findApiKey({ignoreEnvironment: true, profile: 'work'})).to.deep.include({
+      apiKey: 'auth-login-secret-key',
+      source: 'file',
+    })
+    expect(JSON.stringify(config)).not.to.contain('auth-login-secret-key')
     expect(`${stdout}${stderr}`).not.to.contain('auth-login-secret-key')
   })
 
@@ -72,13 +79,15 @@ describe('auth commands', () => {
       '--api-key',
       'work-secret-key',
       '--yes',
+      '--store',
+      'file',
       '--json',
     ])
 
     expect(error).to.equal(undefined)
-    expect((await readConfig())?.profiles).to.deep.equal({
-      default: {apiKey: 'default-secret-key'},
-      work: {apiKey: 'work-secret-key'},
+    expect(Object.keys((await readConfig())?.profiles ?? {})).to.deep.equal(['default', 'work'])
+    expect(await findApiKey({ignoreEnvironment: true, profile: 'default'})).to.deep.include({
+      apiKey: 'default-secret-key',
     })
   })
 
@@ -92,12 +101,16 @@ describe('auth commands', () => {
       'work',
       '--api-key',
       'replacement-secret-key',
+      '--store',
+      'file',
       '--json',
     ])
 
     expect(getExitCode(error)).to.equal(1)
     expect(JSON.parse(stdout)).to.deep.include({ok: false})
-    expect((await readConfig())?.profiles.work.apiKey).to.equal('original-secret-key')
+    expect(await findApiKey({ignoreEnvironment: true, profile: 'work'})).to.deep.include({
+      apiKey: 'original-secret-key',
+    })
     expect(stdout).not.to.match(/original-secret-key|replacement-secret-key/)
   })
 
@@ -110,6 +123,8 @@ describe('auth commands', () => {
       '--api-key',
       'check-only-secret-key',
       '--check',
+      '--store',
+      'file',
       '--json',
     ])
 
@@ -132,7 +147,7 @@ describe('auth commands', () => {
 
     expect(error).to.equal(undefined)
     expect(JSON.parse(stdout)).to.deep.include({
-      apiKeySource: 'config',
+      apiKeySource: 'file',
       authenticated: true,
       balance: 12.5,
       ok: true,
@@ -176,12 +191,64 @@ describe('auth commands', () => {
       profiles: ['default'],
       removed: true,
     })
-    expect((await readConfig())?.profiles).to.deep.equal({
-      default: {apiKey: 'default-secret-key'},
+    expect(Object.keys((await readConfig())?.profiles ?? {})).to.deep.equal(['default'])
+    expect(await findApiKey({ignoreEnvironment: true, profile: 'default'})).to.deep.include({
+      apiKey: 'default-secret-key',
     })
     expect(`${stdout}${stderr}`).not.to.match(
       /default-secret-key|work-secret-key|environment-secret-key/,
     )
+  })
+
+  it('migrates a legacy plaintext credential without exposing it', async () => {
+    const configPath = getConfigFilePath()
+    await mkdir(dirname(configPath), {recursive: true})
+    await writeFile(configPath, JSON.stringify({apiKey: 'legacy-command-secret-key'}))
+
+    const {error, stderr, stdout} = await runCommand([
+      'auth',
+      'migrate',
+      '--to',
+      'file',
+      '--yes',
+      '--json',
+    ])
+
+    expect(error).to.equal(undefined)
+    expect(JSON.parse(stdout)).to.deep.include({migrated: true, ok: true, store: 'file'})
+    expect(await findApiKey({ignoreEnvironment: true})).to.deep.include({
+      apiKey: 'legacy-command-secret-key',
+      source: 'file',
+    })
+    expect(`${stdout}${stderr}${await readFile(configPath, 'utf8')}`).not.to.contain(
+      'legacy-command-secret-key',
+    )
+  })
+
+  it('imports and validates a named environment variable into the selected backend', async () => {
+    process.env.MODELLIX_IMPORT_TEST_KEY = 'import-command-secret-key'
+    const {error, stderr, stdout} = await runCommand([
+      'auth',
+      'import-env',
+      '--env-var',
+      'MODELLIX_IMPORT_TEST_KEY',
+      '--store',
+      'file',
+      '--json',
+    ])
+
+    expect(error).to.equal(undefined)
+    expect(JSON.parse(stdout)).to.deep.include({
+      clearEnvironmentVariable: 'MODELLIX_IMPORT_TEST_KEY',
+      credentialStore: 'file',
+      ok: true,
+      saved: true,
+    })
+    expect(await findApiKey({ignoreEnvironment: true})).to.deep.include({
+      apiKey: 'import-command-secret-key',
+      source: 'file',
+    })
+    expect(`${stdout}${stderr}`).not.to.contain('import-command-secret-key')
   })
 
 })

@@ -350,7 +350,7 @@ describe('model run', () => {
   function stubSuccessfulTask(): void {
     __setHttpRequesterForTest(async (options) => {
       receivedApiKey = options.apiKey
-      receivedBody = options.body ?? ''
+      receivedBody = options.body?.toString() ?? ''
       receivedMethod = options.method
       receivedPath = options.path
       return {

@@ -2,11 +2,17 @@ import {confirm} from '@inquirer/prompts'
 import {Flags} from '@oclif/core'
 
 import {BaseCommand, resolveOutputMode} from '../../base-command.js'
-import {findApiKey, profileFlag, resolveProfile} from '../../lib/auth.js'
-import {getConfigFilePath, removeConfig, removeProfile} from '../../lib/config.js'
+import {
+  type ApiKeySource,
+  findApiKey,
+  profileFlag,
+  removeSavedProfile,
+  resolveProfile,
+} from '../../lib/auth.js'
+import {getConfigFilePath, removeConfig} from '../../lib/config.js'
 
 type ClearResult = {
-  activeApiKeySource: 'config' | 'environment' | 'flag' | 'missing'
+  activeApiKeySource: 'missing' | ApiKeySource
   configPath: string
   currentProfile?: string
   ok: true
@@ -47,8 +53,8 @@ export default class ConfigClear extends BaseCommand {
       await confirmRemoval({...flags, json: outputMode === 'json'}, selection.profile)
       const configPath = getConfigFilePath()
       const removal = configIsUnreadable
-        ? {remainingProfiles: [], removed: await removeConfig()}
-        : await removeProfile(selection.profile)
+        ? {currentProfile: undefined, remainingProfiles: [], removed: await removeConfig()}
+        : await removeSavedProfile(selection.profile)
       const active = await findApiKey({profile: flags.profile})
       const result: ClearResult = {
         activeApiKeySource: active?.source ?? 'missing',

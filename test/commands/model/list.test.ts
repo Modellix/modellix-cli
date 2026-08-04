@@ -137,7 +137,12 @@ describe('model list', () => {
 
   it('applies a named profile and custom local API origin to the request', async () => {
     await writeConfig({apiKey: 'default-profile-key', profile: 'default'})
-    await writeConfig({apiKey: 'work-profile-key', profile: 'work', setCurrent: false})
+    await writeConfig({
+      apiKey: 'work-profile-key',
+      origin: 'http://127.0.0.1:8787',
+      profile: 'work',
+      setCurrent: false,
+    })
     let receivedBaseUrl = ''
     let receivedKey = ''
     __setHttpRequesterForTest(async (options) => {
