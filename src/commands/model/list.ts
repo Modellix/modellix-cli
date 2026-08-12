@@ -3,13 +3,14 @@ import {Flags} from '@oclif/core'
 import {BaseCommand, resolveOutputValue} from '../../base-command.js'
 import {resolveApiKey} from '../../lib/auth.js'
 import {filterModels, getModels, isRecord} from '../../lib/model-data.js'
-import {listModels} from '../../lib/modellix-client.js'
+import {type JsonValue, listModels} from '../../lib/modellix-client.js'
 import {sanitizeTerminalText} from '../../lib/safe-text.js'
 
 export default class ModelList extends BaseCommand {
   static description = 'List available Modellix models'
   static examples = [
     '<%= config.bin %> <%= command.id %>',
+    '<%= config.bin %> <%= command.id %> --featured --output human',
     '<%= config.bin %> <%= command.id %> --type text-to-image --output slugs',
     '<%= config.bin %> <%= command.id %> --provider google --limit 20',
     '<%= config.bin %> <%= command.id %> --search banana',
@@ -19,6 +20,7 @@ export default class ModelList extends BaseCommand {
     'api-key': Flags.string({
       description: 'Modellix API key (overrides environment and saved configuration)',
     }),
+    featured: Flags.boolean({description: 'Return only models marked as Featured'}),
     limit: Flags.integer({
       description: 'Maximum number of models to return',
       min: 1,
@@ -38,7 +40,7 @@ export default class ModelList extends BaseCommand {
     const {flags} = await this.parse(ModelList)
     const output = resolveOutputValue(flags, 'json')
     const apiKey = await resolveApiKey({apiKey: flags['api-key'], profile: flags.profile})
-    const response = await listModels({apiKey})
+    const response = await listModels({apiKey, featured: flags.featured})
     if (!isRecord(response)) {
       throw new Error('Invalid response from Modellix API: expected an object response.')
     }
@@ -59,10 +61,17 @@ export default class ModelList extends BaseCommand {
       this.log(
         models
           .map((model) => {
-            const type = typeof model.type === 'string'
-              ? `\t${sanitizeTerminalText(model.type, 128)}`
-              : ''
-            return `${model.slug}${type}`
+            const columns = [model.slug]
+            if (typeof model.type === 'string') {
+              columns.push(sanitizeTerminalText(model.type, 128))
+            }
+
+            const price = formatDisplayPrice(model.price)
+            if (price) {
+              columns.push(`price: ${price}`)
+            }
+
+            return columns.join('\t')
           })
           .join('\n'),
       )
@@ -71,4 +80,30 @@ export default class ModelList extends BaseCommand {
 
     this.log(JSON.stringify({...response, models}, null, 2))
   }
+}
+
+function formatDisplayPrice(value: JsonValue | undefined): string | undefined {
+  if (value === undefined || !isRecord(value)) {
+    return
+  }
+
+  let amount: string | undefined
+  if (isFiniteNumber(value.fixed)) {
+    amount = String(value.fixed)
+  } else if (isFiniteNumber(value.min) && isFiniteNumber(value.max)) {
+    amount = `${value.min}-${value.max}`
+  }
+
+  if (!amount) {
+    return
+  }
+
+  const unit = typeof value.unit === 'string'
+    ? sanitizeTerminalText(value.unit, 64).trim()
+    : ''
+  return unit ? `${amount} ${unit}` : amount
+}
+
+function isFiniteNumber(value: JsonValue | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }

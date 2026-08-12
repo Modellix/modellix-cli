@@ -41,7 +41,7 @@ modellix-cli --help
 | Diagnostics | Environment and account checks | `doctor` verifies Node.js, key resolution, API connectivity, key validity, and balance without printing the key. |
 | Configuration | Local inspection and cleanup | `config path/show/clear`; status output never reveals stored credentials, and cleanup can target one profile. |
 | Files | Model reference files | `file upload/delete` implements the Modellix File API for PNG, JPEG, and WebP references. Uploads are bounded to 16 MiB, use stable JSON output, and ambiguous uploads are never retried automatically. |
-| Discovery | Search and filter models | `model list --search --type --provider --limit`; output as human text, JSON, quiet slugs, or the compatible `slugs` format. |
+| Discovery | Search and filter models | `model list --featured --search --type --provider --limit`; output as human text with optional display pricing, JSON, quiet slugs, or the compatible `slugs` format. |
 | Discovery | Model details | `model describe <provider/model>` reads the existing model catalog and prints human, JSON, or quiet output. |
 | Execution | Single model task | `model run` accepts an inline JSON object, a JSON file, or stdin; validates finite values, depth, and size before POST; default submission remains asynchronous and `--wait` can return the terminal result. |
 | Execution | Batch model tasks | `model batch` validates the complete JSONL input before any paid POST, bounds task count/body size/concurrency, requires an explicit paid-task guard, optionally waits, and reports every accepted, rejected, unknown, timeout, or skipped submission. |
@@ -238,12 +238,13 @@ modellix-cli config clear --yes --json
 ```sh
 modellix-cli model list
 modellix-cli model list --api-key <key>
+modellix-cli model list --featured --output human
 modellix-cli model list --type text-to-image --output slugs
 modellix-cli model list --provider google --limit 20
 modellix-cli model list --search banana
 ```
 
-The command returns the Modellix API JSON response, including model slugs and documentation URLs. Filters are applied locally and case-insensitively where appropriate. Use `--quiet` or `--output slugs` to print one slug per line.
+The command returns the Modellix API JSON response, including model slugs, documentation URLs, and optional display prices. Use `--featured` to ask the API for Featured Models only. A price contains either `fixed` or `min` and `max`, plus a unit such as `$/img`, `$/sec`, or `$/M chars`. Other filters are applied locally and case-insensitively where appropriate. Use `--quiet` or `--output slugs` to print one slug per line.
 
 Inspect one model without requiring a new backend endpoint:
 
@@ -510,7 +511,7 @@ $ npm install -g modellix-cli
 $ modellix-cli COMMAND
 running command...
 $ modellix-cli (--version)
-modellix-cli/0.0.8
+modellix-cli/0.0.9
 $ modellix-cli --help [COMMAND]
 USAGE
   $ modellix-cli COMMAND
@@ -1235,12 +1236,13 @@ List available Modellix models
 ```
 USAGE
   $ modellix-cli model list [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
-    human|json|quiet|slugs] [--profile <value>] [-q] [-v] [--api-key <value>] [--limit <value>] [--provider <value>]
-    [--search <value>] [--type <value>]
+    human|json|quiet|slugs] [--profile <value>] [-q] [-v] [--api-key <value>] [--featured] [--limit <value>] [--provider
+    <value>] [--search <value>] [--type <value>]
 
 FLAGS
   -q, --quiet             Output one model slug per line
       --api-key=<value>   Modellix API key (overrides environment and saved configuration)
+      --featured          Return only models marked as Featured
       --limit=<value>     Maximum number of models to return
       --output=<option>   [default: json] Output format
                           <options: human|json|quiet|slugs>
@@ -1262,6 +1264,8 @@ DESCRIPTION
 
 EXAMPLES
   $ modellix-cli model list
+
+  $ modellix-cli model list --featured --output human
 
   $ modellix-cli model list --type text-to-image --output slugs
 

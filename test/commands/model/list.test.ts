@@ -7,6 +7,8 @@ import {join} from 'node:path'
 import {writeConfig} from '../../../src/lib/config.js'
 import {__setHttpRequesterForTest} from '../../../src/lib/modellix-client.js'
 
+const docsUrlProperty = 'docs_url'
+
 describe('model list', () => {
   let originalApiKey: string | undefined
   let originalBaseUrl: string | undefined
@@ -41,8 +43,15 @@ describe('model list', () => {
     __setHttpRequesterForTest(async (options) => {
       requestOptions = options
       return {
-        bodyText:
-          '{"models":[{"slug":"google/nano-banana-2","type":"text-to-image","docs_url":"https://docs.modellix.ai/google/nano-banana-2","description":"test"}]}',
+        bodyText: JSON.stringify({
+          models: [{
+            description: 'test',
+            [docsUrlProperty]: 'https://docs.modellix.ai/google/nano-banana-2',
+            price: {fixed: 0.0001, unit: '$/img'},
+            slug: 'google/nano-banana-2',
+            type: 'text-to-image',
+          }],
+        }),
         headers: {},
         statusCode: 200,
       }
@@ -57,6 +66,46 @@ describe('model list', () => {
       path: '/api/v1/models',
     })
     expect(stdout).to.contain('"slug": "google/nano-banana-2"')
+    expect(stdout).to.contain('"fixed": 0.0001')
+  })
+
+  it('requests featured models and formats fixed and ranged prices for humans', async () => {
+    process.env.MODELLIX_API_KEY = 'featured-list-key'
+    let receivedPath = ''
+    __setHttpRequesterForTest(async (options) => {
+      receivedPath = options.path
+      return {
+        bodyText: JSON.stringify({
+          models: [
+            {
+              price: {max: 0.0005, min: 0.0001, unit: '$/img'},
+              slug: 'google/nano-banana-2',
+              type: 'text-to-image',
+            },
+            {
+              price: {fixed: 0.0001, unit: '$/img'},
+              slug: 'google/nano-banana-2-edit',
+              type: 'image-to-image',
+            },
+          ],
+        }),
+        headers: {},
+        statusCode: 200,
+      }
+    })
+
+    const {error, stdout} = await runCommand([
+      'model',
+      'list',
+      '--featured',
+      '--output',
+      'human',
+    ])
+
+    expect(error).to.equal(undefined)
+    expect(receivedPath).to.equal('/api/v1/models?featured=true')
+    expect(stdout).to.contain('price: 0.0001-0.0005 $/img')
+    expect(stdout).to.contain('price: 0.0001 $/img')
   })
 
   it('fails before requesting models when the key is missing', async () => {

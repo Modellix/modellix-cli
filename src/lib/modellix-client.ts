@@ -189,8 +189,9 @@ export async function getTaskResult(input: {
   return requestJson({apiKey: input.apiKey, method: 'GET', path, timeoutMs: input.timeoutMs})
 }
 
-export async function listModels(input: ApiKeyInput): Promise<JsonValue> {
-  return requestJson({apiKey: input.apiKey, method: 'GET', path: '/api/v1/models'})
+export async function listModels(input: ApiKeyInput & {featured?: boolean}): Promise<JsonValue> {
+  const path = input.featured ? '/api/v1/models?featured=true' : '/api/v1/models'
+  return requestJson({apiKey: input.apiKey, method: 'GET', path})
 }
 
 export async function validateApiKey(input: ApiKeyInput): Promise<boolean> {

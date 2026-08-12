@@ -91,6 +91,7 @@ describe('modellix client', () => {
         {
           description: 'A test model',
           [docsUrlProperty]: 'https://docs.modellix.ai/test/model.md',
+          price: {fixed: 0.0001, unit: '$/img'},
           slug: 'test/model',
           type: 'text-to-image',
         },
@@ -102,6 +103,17 @@ describe('modellix client', () => {
     expect(receivedApiKey).to.equal('list-test-key')
     expect(receivedMethod).to.equal('GET')
     expect(receivedPath).to.equal('/api/v1/models')
+    expect(receivedBody).to.equal(undefined)
+  })
+
+  it('requests only featured models through the documented boolean query', async () => {
+    setJsonResponse({models: []})
+
+    expect(await listModels({apiKey: 'featured-list-test-key', featured: true})).to.deep.equal({
+      models: [],
+    })
+    expect(receivedMethod).to.equal('GET')
+    expect(receivedPath).to.equal('/api/v1/models?featured=true')
     expect(receivedBody).to.equal(undefined)
   })
 
