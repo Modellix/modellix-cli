@@ -43,6 +43,7 @@ modellix-cli --help
 | Files | Model reference files | `file upload/delete` implements the Modellix File API for PNG, JPEG, and WebP references. Uploads are bounded to 16 MiB, use stable JSON output, and ambiguous uploads are never retried automatically. |
 | Discovery | Search and filter models | `model list --featured --search --type --provider --limit`; output as human text with optional display pricing, JSON, quiet slugs, or the compatible `slugs` format. |
 | Discovery | Model details | `model describe <provider/model>` reads the existing model catalog and prints human, JSON, or quiet output. |
+| Discovery | Model API schema | `model get-schema <provider/model>` retrieves the public OpenAPI-style request and response schema without an API key; JSON is the default, human output summarizes the contract, and quiet output prints the inference URL. |
 | Execution | Single model task | `model run` accepts an inline JSON object, a JSON file, or stdin; validates finite values, depth, and size before POST; default submission remains asynchronous and `--wait` can return the terminal result. |
 | Execution | Batch model tasks | `model batch` validates the complete JSONL input before any paid POST, bounds task count/body size/concurrency, requires an explicit paid-task guard, optionally waits, and reports every accepted, rejected, unknown, timeout, or skipped submission. |
 | Tasks | Read and wait | `task get`; `task wait` accepts up to 1000 IDs, validates response identity, bounds concurrency, tolerates transient reads inside the overall deadline, preserves partial timeout results, and accepts durations such as `500ms`, `30s`, `5m`, or `2h`. |
@@ -68,6 +69,9 @@ modellix-cli doctor
 
 # Discover model slugs
 modellix-cli model list
+
+# Inspect a model request and response schema
+modellix-cli model get-schema bytedance/seedream-5.0-pro
 
 # Submit a model job
 modellix-cli model run \
@@ -252,6 +256,19 @@ Inspect one model without requiring a new backend endpoint:
 modellix-cli model describe google/nano-banana-2
 modellix-cli model describe google/nano-banana-2 --json
 ```
+
+## Get a model API schema
+
+Use the exact `provider/model` value returned by `model list`. The schema endpoint is public, so this command does not require an API key.
+
+```sh
+modellix-cli model list --output slugs
+modellix-cli model get-schema alibaba/qwen-image-3.0-pro
+modellix-cli model get-schema alibaba/qwen-image-3.0-pro --output human
+modellix-cli model get-schema alibaba/qwen-image-3.0-pro --quiet
+```
+
+The default JSON output preserves the complete `servers` and `post` fields returned by Modellix. Human output includes the inference endpoint, summary, description, request body, and responses. Quiet output prints only `servers[0].url` for scripts. Use `--base-url http://127.0.0.1:<port>` only when testing a compatible local schema endpoint.
 
 ## Run a model
 
@@ -511,7 +528,7 @@ $ npm install -g modellix-cli
 $ modellix-cli COMMAND
 running command...
 $ modellix-cli (--version)
-modellix-cli/0.0.9
+modellix-cli/0.0.10
 $ modellix-cli --help [COMMAND]
 USAGE
   $ modellix-cli COMMAND
@@ -539,6 +556,7 @@ USAGE
 * [`modellix-cli init`](#modellix-cli-init)
 * [`modellix-cli model batch FILE`](#modellix-cli-model-batch-file)
 * [`modellix-cli model describe SLUG`](#modellix-cli-model-describe-slug)
+* [`modellix-cli model get-schema SLUG`](#modellix-cli-model-get-schema-slug)
 * [`modellix-cli model invoke`](#modellix-cli-model-invoke)
 * [`modellix-cli model list`](#modellix-cli-model-list)
 * [`modellix-cli model run`](#modellix-cli-model-run)
@@ -1182,6 +1200,45 @@ EXAMPLES
 ```
 
 _See code: [src/commands/model/describe.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/model/describe.ts)_
+
+## `modellix-cli model get-schema SLUG`
+
+Get a public model schema; use model list --output slugs to discover models
+
+```
+USAGE
+  $ modellix-cli model get-schema SLUG [--base-url <value>] [--debug] [--json] [--no-color] [--no-progress] [--output
+    human|json|quiet] [--profile <value>] [-q] [-v]
+
+ARGUMENTS
+  SLUG  Model slug from `modellix-cli model list --output slugs`
+
+FLAGS
+  -q, --quiet            Output only the model inference URL
+      --json             Output the complete schema as JSON
+      --output=<option>  [default: json] Output format
+                         <options: human|json|quiet>
+
+GLOBAL FLAGS
+  -v, --verbose           Print additional non-sensitive details to stderr
+      --base-url=<value>  [env: MODELLIX_BASE_URL] Modellix API origin (HTTPS, or HTTP for localhost)
+      --debug             Print sanitized HTTP diagnostics to stderr
+      --no-color          Disable terminal colors
+      --no-progress       Disable progress messages
+      --profile=<value>   Authentication profile to use (defaults to MODELLIX_PROFILE)
+
+DESCRIPTION
+  Get a public model schema; use model list --output slugs to discover models
+
+EXAMPLES
+  $ modellix-cli model get-schema alibaba/qwen-image-3.0-pro
+
+  $ modellix-cli model get-schema alibaba/qwen-image-3.0-pro --output human
+
+  $ modellix-cli model get-schema alibaba/qwen-image-3.0-pro --quiet
+```
+
+_See code: [src/commands/model/get-schema.ts](https://github.com/Modellix/modellix-cli/blob/main/src/commands/model/get-schema.ts)_
 
 ## `modellix-cli model invoke`
 

@@ -16,6 +16,7 @@ import {
 export const MODELLIX_BASE_URL_ENV = 'MODELLIX_BASE_URL'
 
 export const DEFAULT_BASE_URL = 'https://api.modellix.ai'
+export const DEFAULT_SCHEMA_BASE_URL = 'https://www.modellix.ai'
 const REQUEST_TIMEOUT_MS = 15_000
 const GET_MAX_ATTEMPTS = 3
 const MAX_API_RESPONSE_BYTES = 16 * 1024 * 1024
@@ -42,10 +43,12 @@ type HttpResponse = {
 }
 
 type RequestOptions = {
-  apiKey: string
+  apiKey?: string
+  baseUrl?: string
   body?: JsonValue
   contentType?: string
   method: 'DELETE' | 'GET' | 'POST'
+  notFoundHint?: string
   path: string
   rawBody?: Buffer
   submissionKind?: 'media' | 'model'
@@ -194,6 +197,20 @@ export async function listModels(input: ApiKeyInput & {featured?: boolean}): Pro
   return requestJson({apiKey: input.apiKey, method: 'GET', path})
 }
 
+export async function getModelSchema(input: {
+  baseUrl?: string
+  modelSlug: string
+}): Promise<JsonValue> {
+  const {modelId, provider} = parseModelSlug(input.modelSlug)
+  const path = `/models/${encodeURIComponent(provider)}/${encodeURIComponent(modelId)}/api_schema`
+  return requestJson({
+    baseUrl: input.baseUrl ?? DEFAULT_SCHEMA_BASE_URL,
+    method: 'GET',
+    notFoundHint: 'Run modellix-cli model list --output slugs to see available model slugs.',
+    path,
+  })
+}
+
 export async function validateApiKey(input: ApiKeyInput): Promise<boolean> {
   const payload = await requestJson({
     apiKey: input.apiKey,
@@ -292,7 +309,7 @@ export async function deleteMediaFile(input: ApiKeyInput & {fileId: string}): Pr
 // Retry, deadline, and paid-submission safety branches are intentionally centralized here.
 // eslint-disable-next-line complexity
 async function requestJson(options: RequestOptions): Promise<JsonValue> {
-  const apiKey = normalizeApiKey(options.apiKey)
+  const apiKey = options.apiKey === undefined ? '' : normalizeApiKey(options.apiKey)
   if (options.body !== undefined && options.rawBody !== undefined) {
     throw new Error('A Modellix request cannot contain both JSON and raw bodies.')
   }
@@ -306,7 +323,7 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
     }
   }
 
-  const baseUrl = resolveBaseUrl()
+  const baseUrl = resolveBaseUrl(options.baseUrl)
   const totalTimeoutMs = Math.max(
     1,
     Math.min(options.timeoutMs ?? REQUEST_TIMEOUT_MS, REQUEST_TIMEOUT_MS),
@@ -407,7 +424,15 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
     }
 
     const apiErrorMessage = redactSecret(
-      buildApiErrorMessage(response, data ?? null, options.method, options.submissionKind),
+      buildApiErrorMessage(
+        response,
+        data ?? null,
+        options.method,
+        {
+          notFoundHint: options.notFoundHint,
+          submissionKind: options.submissionKind,
+        },
+      ),
       apiKey,
     )
     if (options.method === 'GET' && isRetryableStatus(response.statusCode)) {
@@ -433,9 +458,8 @@ async function requestJson(options: RequestOptions): Promise<JsonValue> {
 async function performHttpRequest(options: HttpRequestOptions): Promise<HttpResponse> {
   return new Promise((resolve, reject) => {
     const url = new URL(options.path, `${options.baseUrl}/`)
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${options.apiKey}`,
-    }
+    const headers: Record<string, string> = {}
+    if (options.apiKey) headers.Authorization = `Bearer ${options.apiKey}`
 
     if (options.body !== undefined) {
       headers['Content-Type'] = options.contentType ?? 'application/json'
@@ -689,9 +713,13 @@ function buildApiErrorMessage(
   response: HttpResponse,
   payload: JsonValue,
   method: 'DELETE' | 'GET' | 'POST',
-  submissionKind?: 'media' | 'model',
+  context: {
+    notFoundHint?: string
+    submissionKind?: 'media' | 'model'
+  },
 ): string {
   const {statusCode} = response
+  const {notFoundHint, submissionKind} = context
   const extractedMessage = method === 'GET' ? sanitizeApiMessage(extractMessage(payload)) : undefined
   const detail = extractedMessage ? ` ${extractedMessage}.` : ''
 
@@ -709,7 +737,7 @@ function buildApiErrorMessage(
     }
 
     case 404: {
-      return `Modellix API error (404 Not Found).${detail} Verify task ID, model type, provider, and model ID.`
+      return `Modellix API error (404 Not Found).${detail} ${notFoundHint ?? 'Verify task ID, model type, provider, and model ID.'}`
     }
 
     case 429: {

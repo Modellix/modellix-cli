@@ -6,6 +6,7 @@ import {
   __setRetryDelayForTest,
   ApiResponseSizeLimitError,
   deleteMediaFile,
+  getModelSchema,
   getTaskResult,
   getTeamBalance,
   invokeModelAsync,
@@ -104,6 +105,40 @@ describe('modellix client', () => {
     expect(receivedMethod).to.equal('GET')
     expect(receivedPath).to.equal('/api/v1/models')
     expect(receivedBody).to.equal(undefined)
+  })
+
+  it('gets a public model schema without an API key and preserves the slug path separator', async () => {
+    const payload = {
+      post: {requestBody: {}, responses: {}, summary: 'Test Model'},
+      servers: [{url: 'https://api.modellix.ai/api/v1/test/model'}],
+    }
+    let receivedBaseUrl = ''
+    __setHttpRequesterForTest(async (options) => {
+      recordRequest(options)
+      receivedBaseUrl = options.baseUrl
+      return {bodyText: JSON.stringify(payload), headers: {}, statusCode: 200}
+    })
+
+    expect(await getModelSchema({modelSlug: 'test/model'})).to.deep.equal(payload)
+    expect(receivedApiKey).to.equal('')
+    expect(receivedBaseUrl).to.equal('https://www.modellix.ai')
+    expect(receivedMethod).to.equal('GET')
+    expect(receivedPath).to.equal('/models/test/model/api_schema')
+    expect(receivedPath).not.to.contain('%2F')
+  })
+
+  it('suggests model list when a schema slug does not exist', async () => {
+    __setHttpRequesterForTest(async (options) => {
+      recordRequest(options)
+      return {
+        bodyText: '{"message":"Model Not Found"}',
+        headers: {},
+        statusCode: 404,
+      }
+    })
+
+    const error = await captureError(() => getModelSchema({modelSlug: 'test/missing'}))
+    expect(error.message).to.contain('modellix-cli model list --output slugs')
   })
 
   it('requests only featured models through the documented boolean query', async () => {
